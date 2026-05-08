@@ -15,15 +15,21 @@ public struct Analyzer: Sendable {
     public static var defaultRules: [any Rule] {
         [
             GlobalMutableStateRule(),
+            NonisolatedUnsafeRule(),
             DispatchQueueRule(),
+            DispatchGroupRule(),
             TaskDetachedRule(),
             CompletionHandlerRule(),
             UncheckedSendableRule(),
+            PreconcurrencyRule(),
             ObservableObjectRule(),
             SynchronizationPrimitiveRule(),
             MainActorMissingRule(),
             NotificationCenterRule(),
             OperationQueueMainRule(),
+            TimerRule(),
+            CombineRule(),
+            ThreadRule(),
         ]
     }
 

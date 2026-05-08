@@ -14,14 +14,17 @@ struct FindingComplexityTests {
         }
     }
 
-    @Test("Table contains all 10 Swift 6 concurrency rules")
+    @Test("Table contains all 16 Swift 6 concurrency rules")
     func tableContainsAllKnownRules() {
         let ruleNames = FindingComplexity.weightTable.map(\.rule)
         let expected = [
-            "GlobalMutableStateRule", "UncheckedSendableRule", "SynchronizationPrimitiveRule",
-            "DispatchQueueRule", "OperationQueueMainRule", "TaskDetachedRule",
-            "MainActorMissingRule", "ObservableObjectRule", "CompletionHandlerRule",
-            "NotificationCenterRule"
+            "GlobalMutableStateRule", "NonisolatedUnsafeRule",
+            "UncheckedSendableRule", "SynchronizationPrimitiveRule",
+            "ThreadRule", "DispatchQueueRule", "OperationQueueMainRule",
+            "CombineRule", "DispatchGroupRule", "TaskDetachedRule",
+            "MainActorMissingRule", "TimerRule",
+            "ObservableObjectRule", "CompletionHandlerRule",
+            "PreconcurrencyRule", "NotificationCenterRule"
         ]
         for name in expected {
             #expect(ruleNames.contains(name), "Missing rule in weight table: \(name)")
