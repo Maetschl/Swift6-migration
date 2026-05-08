@@ -7,7 +7,8 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 ## Features
 
 - 🔍 Recursively scans Swift projects for migration issues
-- 📋 6 built-in rules covering the most common Swift 6 pain points
+- 📦 Automatically detects modules and scores each one independently
+- 📋 10 built-in Swift 6 concurrency rules + 2 optional code-quality rules
 - 📊 3 report formats: Markdown, JSON, HTML dashboard
 - ⚙️ Configurable exclusions for directories you don't own
 - 🧩 Extensible rule architecture — add your own rules by conforming to `Rule`
@@ -25,18 +26,18 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 ```bash
 git clone <repo-url>
-cd Swift6MigrationAnalyzer
+cd Swift6-migration
 swift build -c release
 ```
 
-The compiled binary will be at `.build/release/Swift6MigrationAnalyzer`.
+The compiled binary will be at `.build/release/swift6-analyzer`.
 
 ---
 
 ## Usage
 
 ```bash
-Swift6MigrationAnalyzer <path> [options]
+swift6-analyzer <path> [options]
 ```
 
 ### Arguments
@@ -52,6 +53,7 @@ Swift6MigrationAnalyzer <path> [options]
 | `--report <format>` | Report format: `markdown`, `json`, or `html` | `markdown` |
 | `--output <file>` | Write the report to a file instead of stdout | stdout |
 | `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_ |
+| `--include-quality-rules` | Also enable code-quality rules (`ForceUnwrap`, `ForceTry`) | disabled |
 
 ---
 
@@ -60,13 +62,13 @@ Swift6MigrationAnalyzer <path> [options]
 ### Analyze a project and print a Markdown report to stdout
 
 ```bash
-.build/release/Swift6MigrationAnalyzer /path/to/MyApp
+.build/release/swift6-analyzer /path/to/MyApp
 ```
 
 ### Save a Markdown report to a file
 
 ```bash
-.build/release/Swift6MigrationAnalyzer /path/to/MyApp \
+.build/release/swift6-analyzer /path/to/MyApp \
   --report markdown \
   --output migration-report.md
 ```
@@ -74,7 +76,7 @@ Swift6MigrationAnalyzer <path> [options]
 ### Generate a JSON report
 
 ```bash
-.build/release/Swift6MigrationAnalyzer /path/to/MyApp \
+.build/release/swift6-analyzer /path/to/MyApp \
   --report json \
   --output report.json
 ```
@@ -82,7 +84,7 @@ Swift6MigrationAnalyzer <path> [options]
 ### Generate an HTML dashboard
 
 ```bash
-.build/release/Swift6MigrationAnalyzer /path/to/MyApp \
+.build/release/swift6-analyzer /path/to/MyApp \
   --report html \
   --output report.html
 ```
@@ -90,16 +92,24 @@ Swift6MigrationAnalyzer <path> [options]
 ### Exclude additional directories
 
 ```bash
-.build/release/Swift6MigrationAnalyzer /path/to/MyApp \
+.build/release/swift6-analyzer /path/to/MyApp \
   --exclude Mocks,Stubs,Generated \
   --report html \
   --output report.html
 ```
 
+### Include optional code-quality rules
+
+```bash
+.build/release/swift6-analyzer /path/to/MyApp \
+  --include-quality-rules \
+  --report markdown
+```
+
 ### Analyze a single file
 
 ```bash
-.build/release/Swift6MigrationAnalyzer Sources/MyApp/HomeViewModel.swift
+.build/release/swift6-analyzer Sources/MyApp/HomeViewModel.swift
 ```
 
 ---
@@ -125,14 +135,27 @@ Use `--exclude` to add more on top of these defaults.
 
 ## Built-in Rules
 
+### Swift 6 Concurrency Rules (default)
+
 | Rule | Severity | Detects | Suggestion |
 |------|----------|---------|------------|
-| `DispatchQueueRule` | ⚠️ warning | `DispatchQueue.main.async { }` | Replace with `@MainActor` or structured concurrency |
+| `GlobalMutableStateRule` | 🔴 error | Global `var` not concurrency-safe | Isolate with `@MainActor`, wrap in an actor, or make it a `let` constant |
+| `DispatchQueueRule` | ⚠️ warning / 🔴 error | `DispatchQueue.main.async { }`, `.sync { }` | Replace with `@MainActor` or structured concurrency; `.sync` is flagged as an error |
 | `TaskDetachedRule` | ⚠️ warning | `Task.detached { }` | Prefer `Task { }` or structured concurrency to avoid actor isolation issues |
-| `ForceUnwrapRule` | ⚠️ warning | `value!` | Use optional binding (`if let`, `guard let`) instead |
-| `ForceTryRule` | 🔴 error | `try!` | Use `try/catch` or `try?` instead |
 | `CompletionHandlerRule` | ⚠️ warning | `completion: @escaping (...)` | Candidate for `async`/`await` migration |
 | `UncheckedSendableRule` | 🔴 error | `@unchecked Sendable` | Audit thread safety manually; bypass is not Swift 6 safe |
+| `ObservableObjectRule` | ⚠️ warning | `ObservableObject` + `@Published` | Migrate to the `@Observable` macro (Swift 5.9+) |
+| `SynchronizationPrimitiveRule` | ⚠️ warning | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. | Consider migrating to an actor for Swift 6 data isolation |
+| `MainActorMissingRule` | ⚠️ warning | UI classes (`UIViewController`, `UIView`, …) missing `@MainActor` | Add `@MainActor` to make main-thread isolation explicit |
+| `NotificationCenterRule` | ⚠️ warning | `NotificationCenter.addObserver` closure / `.post` | Use `NotificationCenter.notifications(named:)` async sequence or annotate with `@MainActor` |
+| `OperationQueueMainRule` | ⚠️ warning | `OperationQueue.main` | Replace with `@MainActor` isolation or `Task { @MainActor in ... }` |
+
+### Code-Quality Rules (opt-in via `--include-quality-rules`)
+
+| Rule | Severity | Detects | Suggestion |
+|------|----------|---------|------------|
+| `ForceUnwrapRule` | ⚠️ warning | `value!` | Use optional binding (`if let`, `guard let`) instead |
+| `ForceTryRule` | 🔴 error | `try!` | Use `try/catch` or `try?` instead |
 
 ---
 
@@ -140,7 +163,7 @@ Use `--exclude` to add more on top of these defaults.
 
 ### Markdown
 
-Grouped by rule, with severity badges and a summary table.
+Grouped by module and rule, with severity badges and a summary table.
 
 ```markdown
 # Swift 6 Migration Report
@@ -192,7 +215,7 @@ Interactive dashboard with:
 
 ## Adding a Custom Rule
 
-1. Create a new file in `Sources/Swift6MigrationAnalyzer/Rules/`.
+1. Create a new file in `Sources/Swift6MigrationAnalyzerCore/Rules/`.
 2. Conform to the `Rule` protocol:
 
 ```swift
@@ -237,7 +260,7 @@ struct MyCustomRule: Rule {
 }
 ```
 
-3. Register it in [`Analyzer.swift`](Sources/Swift6MigrationAnalyzer/Core/Analyzer.swift) inside `defaultRules`:
+3. Register it in [`Analyzer.swift`](Sources/Swift6MigrationAnalyzerCore/Core/Analyzer.swift) inside `defaultRules`:
 
 ```swift
 public static var defaultRules: [any Rule] {
@@ -253,29 +276,42 @@ public static var defaultRules: [any Rule] {
 ## Project Structure
 
 ```
-Sources/Swift6MigrationAnalyzer/
-├── main.swift                        ← Entry point
-├── CLI.swift                         ← ArgumentParser command & flags
-├── Core/
-│   ├── Severity.swift                ← info / warning / error enum
-│   ├── Finding.swift                 ← Codable result model
-│   ├── Rule.swift                    ← Rule protocol
-│   └── Analyzer.swift                ← Engine: parse → run rules → aggregate
-├── Rules/
-│   ├── DispatchQueueRule.swift
-│   ├── TaskDetachedRule.swift
-│   ├── ForceUnwrapRule.swift
-│   ├── ForceTryRule.swift
-│   ├── CompletionHandlerRule.swift
-│   └── UncheckedSendableRule.swift
-├── Reporters/
-│   ├── Reporter.swift                ← Reporter protocol
-│   ├── MarkdownReporter.swift
-│   ├── JSONReporter.swift
-│   └── HTMLReporter.swift
-└── Utils/
-    ├── FileScanner.swift             ← Recursive .swift scanner with exclusions
-    └── SourceLocationHelper.swift    ← Wraps SourceLocationConverter
+Sources/
+├── Swift6MigrationAnalyzer/
+│   ├── main.swift                        ← Entry point
+│   └── CLI.swift                         ← ArgumentParser command & flags
+└── Swift6MigrationAnalyzerCore/
+    ├── Core/
+    │   ├── Severity.swift                ← info / warning / error enum
+    │   ├── Finding.swift                 ← Codable result model
+    │   ├── Rule.swift                    ← Rule protocol
+    │   ├── Analyzer.swift                ← Engine: parse → run rules → aggregate
+    │   ├── ModuleScanner.swift           ← Detects modules inside a directory
+    │   ├── ModuleResult.swift            ← Per-module findings + score + status
+    │   ├── MigrationStatus.swift         ← Migrated / PendingMigration
+    │   ├── FindingComplexity.swift       ← Complexity scoring weights
+    │   └── MigrationIndicators.swift     ← Counts actors, @MainActor, async funcs
+    ├── Rules/
+    │   ├── GlobalMutableStateRule.swift
+    │   ├── DispatchQueueRule.swift
+    │   ├── TaskDetachedRule.swift
+    │   ├── CompletionHandlerRule.swift
+    │   ├── UncheckedSendableRule.swift
+    │   ├── ObservableObjectRule.swift
+    │   ├── SynchronizationPrimitiveRule.swift
+    │   ├── MainActorMissingRule.swift
+    │   ├── NotificationCenterRule.swift
+    │   ├── OperationQueueMainRule.swift
+    │   ├── ForceUnwrapRule.swift          ← quality rule (opt-in)
+    │   └── ForceTryRule.swift             ← quality rule (opt-in)
+    ├── Reporters/
+    │   ├── Reporter.swift                ← Reporter protocol
+    │   ├── MarkdownReporter.swift
+    │   ├── JSONReporter.swift
+    │   └── HTMLReporter.swift
+    └── Utils/
+        ├── FileScanner.swift             ← Recursive .swift scanner with exclusions
+        └── SourceLocationHelper.swift    ← Wraps SourceLocationConverter
 ```
 
 ---
