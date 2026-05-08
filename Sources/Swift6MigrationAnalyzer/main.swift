@@ -1,0 +1,1 @@
+Swift6MigrationAnalyzerCommand.main()
