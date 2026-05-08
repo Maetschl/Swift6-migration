@@ -8,7 +8,7 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 - 🔍 Recursively scans Swift projects for migration issues
 - 📦 Automatically detects modules and scores each one independently
-- 📋 10 built-in Swift 6 concurrency rules + 2 optional code-quality rules
+- 📋 16 built-in Swift 6 concurrency rules + 2 optional code-quality rules
 - 📊 3 report formats: Markdown, JSON, HTML dashboard
 - ⚙️ Configurable exclusions for directories you don't own
 - 🧩 Extensible rule architecture — add your own rules by conforming to `Rule`
@@ -135,27 +135,73 @@ Use `--exclude` to add more on top of these defaults.
 
 ## Built-in Rules
 
+> **Weight** — complexity of the required fix (1.0 = full architectural redesign, 0.3 = trivial substitution). The migration **score** for a module = `Σ(finding × weight)`. A score of `0.0` means the module is fully migrated.
+
 ### Swift 6 Concurrency Rules (default)
 
-| Rule | Severity | Detects | Suggestion |
-|------|----------|---------|------------|
-| `GlobalMutableStateRule` | 🔴 error | Global `var` not concurrency-safe | Isolate with `@MainActor`, wrap in an actor, or make it a `let` constant |
-| `DispatchQueueRule` | ⚠️ warning / 🔴 error | `DispatchQueue.main.async { }`, `.sync { }` | Replace with `@MainActor` or structured concurrency; `.sync` is flagged as an error |
-| `TaskDetachedRule` | ⚠️ warning | `Task.detached { }` | Prefer `Task { }` or structured concurrency to avoid actor isolation issues |
-| `CompletionHandlerRule` | ⚠️ warning | `completion: @escaping (...)` | Candidate for `async`/`await` migration |
-| `UncheckedSendableRule` | 🔴 error | `@unchecked Sendable` | Audit thread safety manually; bypass is not Swift 6 safe |
-| `ObservableObjectRule` | ⚠️ warning | `ObservableObject` + `@Published` | Migrate to the `@Observable` macro (Swift 5.9+) |
-| `SynchronizationPrimitiveRule` | ⚠️ warning | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. | Consider migrating to an actor for Swift 6 data isolation |
-| `MainActorMissingRule` | ⚠️ warning | UI classes (`UIViewController`, `UIView`, …) missing `@MainActor` | Add `@MainActor` to make main-thread isolation explicit |
-| `NotificationCenterRule` | ⚠️ warning | `NotificationCenter.addObserver` closure / `.post` | Use `NotificationCenter.notifications(named:)` async sequence or annotate with `@MainActor` |
-| `OperationQueueMainRule` | ⚠️ warning | `OperationQueue.main` | Replace with `@MainActor` isolation or `Task { @MainActor in ... }` |
+| Rule | Severity | Weight | Detects | Docs |
+|------|----------|--------|---------|------|
+| `UncheckedSendableRule` | 🔴 error | 1.0 | `@unchecked Sendable` — bypasses all concurrency checks | [📖](Docs/Rules/UncheckedSendableRule.md) |
+| `NonisolatedUnsafeRule` | 🔴 error | 0.9 | `nonisolated(unsafe)` stored properties | [📖](Docs/Rules/NonisolatedUnsafeRule.md) |
+| `GlobalMutableStateRule` | 🔴 error | 0.9 | Global `var` not concurrency-safe | [📖](Docs/Rules/GlobalMutableStateRule.md) |
+| `SynchronizationPrimitiveRule` | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. | [📖](Docs/Rules/SynchronizationPrimitiveRule.md) |
+| `ThreadRule` | ⚠️ warning | 0.7 | `Thread.detachNewThread`, `Thread.isMainThread`, `Thread.main` | [📖](Docs/Rules/ThreadRule.md) |
+| `DispatchQueueRule` | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async { }`, `.sync { }` | [📖](Docs/Rules/DispatchQueueRule.md) |
+| `OperationQueueMainRule` | ⚠️ warning | 0.7 | `OperationQueue.main` | [📖](Docs/Rules/OperationQueueMainRule.md) |
+| `CombineRule` | ⚠️ warning | 0.6 | `.sink { }`, `assign(to:on:)`, `AnyCancellable` | [📖](Docs/Rules/CombineRule.md) |
+| `DispatchGroupRule` | ⚠️ warning | 0.6 | `DispatchGroup()` usage | [📖](Docs/Rules/DispatchGroupRule.md) |
+| `TaskDetachedRule` | ⚠️ warning | 0.6 | `Task.detached { }` | [📖](Docs/Rules/TaskDetachedRule.md) |
+| `MainActorMissingRule` | ⚠️ warning | 0.6 | UIKit/AppKit subclasses missing `@MainActor` | [📖](Docs/Rules/MainActorMissingRule.md) |
+| `TimerRule` | ⚠️ warning | 0.5 | Callback-based `Timer.scheduledTimer` / `Timer(timeInterval:…)` | [📖](Docs/Rules/TimerRule.md) |
+| `ObservableObjectRule` | ⚠️ warning | 0.5 | `ObservableObject` + `@Published` | [📖](Docs/Rules/ObservableObjectRule.md) |
+| `CompletionHandlerRule` | ⚠️ warning | 0.5 | `completion: @escaping (...)` | [📖](Docs/Rules/CompletionHandlerRule.md) |
+| `PreconcurrencyRule` | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances | [📖](Docs/Rules/PreconcurrencyRule.md) |
+| `NotificationCenterRule` | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` | [📖](Docs/Rules/NotificationCenterRule.md) |
 
 ### Code-Quality Rules (opt-in via `--include-quality-rules`)
 
-| Rule | Severity | Detects | Suggestion |
-|------|----------|---------|------------|
-| `ForceUnwrapRule` | ⚠️ warning | `value!` | Use optional binding (`if let`, `guard let`) instead |
-| `ForceTryRule` | 🔴 error | `try!` | Use `try/catch` or `try?` instead |
+| Rule | Severity | Weight | Detects | Docs |
+|------|----------|--------|---------|------|
+| `ForceTryRule` | 🔴 error | 0.8 | `try!` | [📖](Docs/Rules/ForceTryRule.md) |
+| `ForceUnwrapRule` | ⚠️ warning | 0.3 | `value!` | [📖](Docs/Rules/ForceUnwrapRule.md) |
+
+---
+
+## Rule Documentation
+
+Each rule has a dedicated documentation page with:
+- What the rule detects
+- Why it matters in Swift 6
+- ❌ Wrong code example
+- ✅ Correct code example(s) with migration guidance
+
+### Swift 6 Concurrency
+
+| Rule | Summary |
+|------|---------|
+| [UncheckedSendableRule](Docs/Rules/UncheckedSendableRule.md) | Types bypassing `Sendable` checks with `@unchecked` |
+| [NonisolatedUnsafeRule](Docs/Rules/NonisolatedUnsafeRule.md) | Properties suppressing concurrency checking with `nonisolated(unsafe)` |
+| [GlobalMutableStateRule](Docs/Rules/GlobalMutableStateRule.md) | File-scope `var` with no actor isolation |
+| [SynchronizationPrimitiveRule](Docs/Rules/SynchronizationPrimitiveRule.md) | Manual locks replacing actor isolation |
+| [ThreadRule](Docs/Rules/ThreadRule.md) | `Thread` API bypassing the actor model |
+| [DispatchQueueRule](Docs/Rules/DispatchQueueRule.md) | `DispatchQueue` usage not integrated with actors |
+| [OperationQueueMainRule](Docs/Rules/OperationQueueMainRule.md) | `OperationQueue.main` instead of `@MainActor` |
+| [CombineRule](Docs/Rules/CombineRule.md) | Combine subscriptions with no actor isolation guarantee |
+| [DispatchGroupRule](Docs/Rules/DispatchGroupRule.md) | `DispatchGroup` instead of `withTaskGroup` |
+| [TaskDetachedRule](Docs/Rules/TaskDetachedRule.md) | `Task.detached` losing actor context |
+| [MainActorMissingRule](Docs/Rules/MainActorMissingRule.md) | UIKit/AppKit subclasses without explicit `@MainActor` |
+| [TimerRule](Docs/Rules/TimerRule.md) | Callback `Timer` firing outside actor isolation |
+| [ObservableObjectRule](Docs/Rules/ObservableObjectRule.md) | `ObservableObject` + `@Published` instead of `@Observable` |
+| [CompletionHandlerRule](Docs/Rules/CompletionHandlerRule.md) | `@escaping` completion handlers ready for `async/await` |
+| [PreconcurrencyRule](Docs/Rules/PreconcurrencyRule.md) | `@preconcurrency` suppressing real Swift 6 errors |
+| [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries |
+
+### Code Quality (opt-in)
+
+| Rule | Summary |
+|------|---------|
+| [ForceTryRule](Docs/Rules/ForceTryRule.md) | `try!` crashing instead of proper error handling |
+| [ForceUnwrapRule](Docs/Rules/ForceUnwrapRule.md) | `value!` crashing instead of optional binding |
 
 ---
 
@@ -246,7 +292,6 @@ struct MyCustomRule: Rule {
         }
 
         override func visit(_ node: FunctionCallExprSyntax) -> SyntaxVisitorContinueKind {
-            // Detection logic here
             let (line, col) = SourceLocationHelper.location(of: node, converter: converter)
             findings.append(Finding(
                 file: file, line: line, column: col,
@@ -260,58 +305,63 @@ struct MyCustomRule: Rule {
 }
 ```
 
-3. Register it in [`Analyzer.swift`](Sources/Swift6MigrationAnalyzerCore/Core/Analyzer.swift) inside `defaultRules`:
-
-```swift
-public static var defaultRules: [any Rule] {
-    [
-        // ...existing rules...
-        MyCustomRule()
-    ]
-}
-```
+3. Register it in [`Analyzer.swift`](Sources/Swift6MigrationAnalyzerCore/Core/Analyzer.swift) inside `defaultRules`.
+4. Add a weight entry in [`FindingComplexity.swift`](Sources/Swift6MigrationAnalyzerCore/Core/FindingComplexity.swift).
+5. Create a doc file at `Docs/Rules/MyCustomRule.md` following the same template as the existing rule docs.
 
 ---
 
 ## Project Structure
 
 ```
+Docs/
+└── Rules/                                ← Per-rule documentation with ❌/✅ examples
+    ├── GlobalMutableStateRule.md
+    ├── NonisolatedUnsafeRule.md
+    ├── UncheckedSendableRule.md
+    └── ... (18 files total)
 Sources/
 ├── Swift6MigrationAnalyzer/
 │   ├── main.swift                        ← Entry point
 │   └── CLI.swift                         ← ArgumentParser command & flags
 └── Swift6MigrationAnalyzerCore/
     ├── Core/
-    │   ├── Severity.swift                ← info / warning / error enum
-    │   ├── Finding.swift                 ← Codable result model
-    │   ├── Rule.swift                    ← Rule protocol
-    │   ├── Analyzer.swift                ← Engine: parse → run rules → aggregate
-    │   ├── ModuleScanner.swift           ← Detects modules inside a directory
-    │   ├── ModuleResult.swift            ← Per-module findings + score + status
-    │   ├── MigrationStatus.swift         ← Migrated / PendingMigration
-    │   ├── FindingComplexity.swift       ← Complexity scoring weights
-    │   └── MigrationIndicators.swift     ← Counts actors, @MainActor, async funcs
-    ├── Rules/
+    │   ├── Severity.swift
+    │   ├── Finding.swift
+    │   ├── Rule.swift
+    │   ├── Analyzer.swift
+    │   ├── ModuleScanner.swift
+    │   ├── ModuleResult.swift
+    │   ├── MigrationStatus.swift
+    │   ├── FindingComplexity.swift
+    │   └── MigrationIndicators.swift
+    ├── Rules/                            ← 18 rule implementations (each links to Docs/Rules/)
     │   ├── GlobalMutableStateRule.swift
-    │   ├── DispatchQueueRule.swift
-    │   ├── TaskDetachedRule.swift
-    │   ├── CompletionHandlerRule.swift
+    │   ├── NonisolatedUnsafeRule.swift
     │   ├── UncheckedSendableRule.swift
-    │   ├── ObservableObjectRule.swift
     │   ├── SynchronizationPrimitiveRule.swift
-    │   ├── MainActorMissingRule.swift
-    │   ├── NotificationCenterRule.swift
+    │   ├── ThreadRule.swift
+    │   ├── DispatchQueueRule.swift
     │   ├── OperationQueueMainRule.swift
+    │   ├── CombineRule.swift
+    │   ├── DispatchGroupRule.swift
+    │   ├── TaskDetachedRule.swift
+    │   ├── MainActorMissingRule.swift
+    │   ├── TimerRule.swift
+    │   ├── ObservableObjectRule.swift
+    │   ├── CompletionHandlerRule.swift
+    │   ├── PreconcurrencyRule.swift
+    │   ├── NotificationCenterRule.swift
     │   ├── ForceUnwrapRule.swift          ← quality rule (opt-in)
     │   └── ForceTryRule.swift             ← quality rule (opt-in)
     ├── Reporters/
-    │   ├── Reporter.swift                ← Reporter protocol
+    │   ├── Reporter.swift
     │   ├── MarkdownReporter.swift
     │   ├── JSONReporter.swift
     │   └── HTMLReporter.swift
     └── Utils/
-        ├── FileScanner.swift             ← Recursive .swift scanner with exclusions
-        └── SourceLocationHelper.swift    ← Wraps SourceLocationConverter
+        ├── FileScanner.swift
+        └── SourceLocationHelper.swift
 ```
 
 ---

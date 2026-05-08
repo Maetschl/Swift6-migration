@@ -8,6 +8,7 @@ import SwiftSyntax
 ///
 /// Preferred Swift 6 alternatives: `.values` async sequence with `for await`,
 /// `AsyncStream`, or `assign(to:)` with `@Observable`.
+/// - SeeAlso: [CombineRule documentation](../../../../Docs/Rules/CombineRule.md)
 public struct CombineRule: Rule {
     public var name: String { "CombineRule" }
     public init() {}

@@ -10,6 +10,7 @@ import SwiftSyntax
 ///
 /// Every occurrence must be manually audited and replaced with proper actor
 /// isolation, a `Mutex`/`OSAllocatedUnfairLock`, or a `Sendable` value type.
+/// - SeeAlso: [NonisolatedUnsafeRule documentation](../../../../Docs/Rules/NonisolatedUnsafeRule.md)
 public struct NonisolatedUnsafeRule: Rule {
     public var name: String { "NonisolatedUnsafeRule" }
     public init() {}

@@ -8,6 +8,7 @@ import SwiftSyntax
 /// Preferred Swift 6 alternatives:
 /// - One-shot delay:  `Task { try await Task.sleep(for: .seconds(N)) }`
 /// - Repeating timer: `AsyncStream`-based clock or a `withTaskGroup` loop
+/// - SeeAlso: [TimerRule documentation](../../../../Docs/Rules/TimerRule.md)
 public struct TimerRule: Rule {
     public var name: String { "TimerRule" }
     public init() {}

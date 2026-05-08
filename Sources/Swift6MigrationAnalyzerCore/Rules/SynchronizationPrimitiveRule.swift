@@ -3,6 +3,7 @@ import SwiftSyntax
 /// Detects usage of manual synchronization primitives (NSLock, NSRecursiveLock,
 /// DispatchSemaphore, NSCondition, pthread_mutex_t, os_unfair_lock).
 /// These indicate hand-rolled thread safety that should be migrated to actors in Swift 6.
+/// - SeeAlso: [SynchronizationPrimitiveRule documentation](../../../../Docs/Rules/SynchronizationPrimitiveRule.md)
 public struct SynchronizationPrimitiveRule: Rule {
     public var name: String { "SynchronizationPrimitiveRule" }
     public init() {}

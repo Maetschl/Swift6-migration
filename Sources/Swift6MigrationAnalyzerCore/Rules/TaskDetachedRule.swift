@@ -1,6 +1,7 @@
 import SwiftSyntax
 
 /// Detects `Task.detached { }` which may cause actor isolation violations.
+/// - SeeAlso: [TaskDetachedRule documentation](../../../../Docs/Rules/TaskDetachedRule.md)
 public struct TaskDetachedRule: Rule {
     public var name: String { "TaskDetachedRule" }
     public init() {}

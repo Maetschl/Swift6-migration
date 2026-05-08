@@ -1,6 +1,7 @@
 import SwiftSyntax
 
 /// Detects completion handler patterns (`completion: @escaping (...)`) as candidates for async/await.
+/// - SeeAlso: [CompletionHandlerRule documentation](../../../../Docs/Rules/CompletionHandlerRule.md)
 public struct CompletionHandlerRule: Rule {
     public var name: String { "CompletionHandlerRule" }
     public init() {}

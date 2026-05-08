@@ -8,6 +8,7 @@ import SwiftSyntax
 /// - `Thread.isMainThread` / `Thread.main` — thread-level checks that don't compose
 ///   with actor isolation; a function can be @MainActor-isolated yet called from a
 ///   background Thread, giving a false-positive `isMainThread` check.
+/// - SeeAlso: [ThreadRule documentation](../../../../Docs/Rules/ThreadRule.md)
 public struct ThreadRule: Rule {
     public var name: String { "ThreadRule" }
     public init() {}

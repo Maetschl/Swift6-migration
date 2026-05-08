@@ -4,6 +4,7 @@ import SwiftSyntax
 /// In Swift 5.9+ / Swift 6, the `@Observable` macro replaces `ObservableObject` + `@Published`.
 /// Migrating removes the need for `@Published`, reduces boilerplate, and avoids
 /// main-thread observation issues that cause Swift 6 concurrency warnings.
+/// - SeeAlso: [ObservableObjectRule documentation](../../../../Docs/Rules/ObservableObjectRule.md)
 public struct ObservableObjectRule: Rule {
     public var name: String { "ObservableObjectRule" }
     public init() {}

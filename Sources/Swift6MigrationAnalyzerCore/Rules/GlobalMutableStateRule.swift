@@ -3,6 +3,7 @@ import SwiftSyntax
 /// Detects top-level (file-scope) `var` declarations that are not actor-isolated.
 /// In Swift 6, non-isolated global mutable state is a compile error:
 /// "Var 'X' is not concurrency-safe because it is non-isolated global shared mutable state."
+/// - SeeAlso: [GlobalMutableStateRule documentation](../../../../Docs/Rules/GlobalMutableStateRule.md)
 public struct GlobalMutableStateRule: Rule {
     public var name: String { "GlobalMutableStateRule" }
     public init() {}

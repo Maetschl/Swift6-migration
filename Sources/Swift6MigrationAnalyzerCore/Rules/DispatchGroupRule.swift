@@ -6,6 +6,7 @@ import SwiftSyntax
 /// work across arbitrary threads, bypassing Swift 6 actor isolation.
 /// In Swift 6, `async let` and `withTaskGroup` / `withThrowingTaskGroup` provide
 /// structured concurrency equivalents with guaranteed actor isolation.
+/// - SeeAlso: [DispatchGroupRule documentation](../../../../Docs/Rules/DispatchGroupRule.md)
 public struct DispatchGroupRule: Rule {
     public var name: String { "DispatchGroupRule" }
     public init() {}

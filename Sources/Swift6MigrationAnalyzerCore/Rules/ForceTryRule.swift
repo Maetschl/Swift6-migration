@@ -1,6 +1,7 @@
 import SwiftSyntax
 
 /// Detects `try!` expressions.
+/// - SeeAlso: [ForceTryRule documentation](../../../../Docs/Rules/ForceTryRule.md)
 public struct ForceTryRule: Rule {
     public var name: String { "ForceTryRule" }
     public init() {}

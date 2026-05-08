@@ -4,6 +4,7 @@ import SwiftSyntax
 ///
 /// - `.main.async` / `.main.asyncAfter` / `global().async` → warning: prefer @MainActor or structured concurrency
 /// - `.main.sync` / `.sync` → error: blocks the calling thread and bypasses actor isolation
+/// - SeeAlso: [DispatchQueueRule documentation](../../../../Docs/Rules/DispatchQueueRule.md)
 public struct DispatchQueueRule: Rule {
     public var name: String { "DispatchQueueRule" }
     public init() {}

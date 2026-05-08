@@ -6,6 +6,7 @@ import SwiftSyntax
 /// `@MainActor` annotation makes the isolation visible and prevents "implicitly
 /// asynchronous call to main-actor-isolated" warnings when calling these types from
 /// non-isolated contexts.
+/// - SeeAlso: [MainActorMissingRule documentation](../../../../Docs/Rules/MainActorMissingRule.md)
 public struct MainActorMissingRule: Rule {
     public var name: String { "MainActorMissingRule" }
     public init() {}

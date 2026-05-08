@@ -1,6 +1,7 @@
 import SwiftSyntax
 
 /// Detects force-unwrap (`value!`) and force-try (`try!`) expressions.
+/// - SeeAlso: [ForceUnwrapRule documentation](../../../../Docs/Rules/ForceUnwrapRule.md)
 public struct ForceUnwrapRule: Rule {
     public var name: String { "ForceUnwrapRule" }
     public init() {}

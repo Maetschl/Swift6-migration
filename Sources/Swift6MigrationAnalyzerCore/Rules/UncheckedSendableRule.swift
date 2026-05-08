@@ -1,6 +1,7 @@
 import SwiftSyntax
 
 /// Detects `@unchecked Sendable` conformances which bypass Swift 6 concurrency checks.
+/// - SeeAlso: [UncheckedSendableRule documentation](../../../../Docs/Rules/UncheckedSendableRule.md)
 public struct UncheckedSendableRule: Rule {
     public var name: String { "UncheckedSendableRule" }
     public init() {}
