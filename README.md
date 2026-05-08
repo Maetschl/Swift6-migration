@@ -141,31 +141,31 @@ Use `--exclude` to add more on top of these defaults.
 
 ### Swift 6 Concurrency Rules (default)
 
-| Rule | Severity | Weight | Detects | Docs |
-|------|----------|--------|---------|------|
-| `UncheckedSendableRule` | 🔴 error | 1.0 | `@unchecked Sendable` — bypasses all concurrency checks | [📖](Docs/Rules/UncheckedSendableRule.md) |
-| `NonisolatedUnsafeRule` | 🔴 error | 0.9 | `nonisolated(unsafe)` stored properties | [📖](Docs/Rules/NonisolatedUnsafeRule.md) |
-| `GlobalMutableStateRule` | 🔴 error | 0.9 | Global `var` not concurrency-safe | [📖](Docs/Rules/GlobalMutableStateRule.md) |
-| `SynchronizationPrimitiveRule` | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. | [📖](Docs/Rules/SynchronizationPrimitiveRule.md) |
-| `ThreadRule` | ⚠️ warning | 0.7 | `Thread.detachNewThread`, `Thread.isMainThread`, `Thread.main` | [📖](Docs/Rules/ThreadRule.md) |
-| `DispatchQueueRule` | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async { }`, `.sync { }` | [📖](Docs/Rules/DispatchQueueRule.md) |
-| `OperationQueueMainRule` | ⚠️ warning | 0.7 | `OperationQueue.main` | [📖](Docs/Rules/OperationQueueMainRule.md) |
-| `CombineRule` | ⚠️ warning | 0.6 | `.sink { }`, `assign(to:on:)`, `AnyCancellable` | [📖](Docs/Rules/CombineRule.md) |
-| `DispatchGroupRule` | ⚠️ warning | 0.6 | `DispatchGroup()` usage | [📖](Docs/Rules/DispatchGroupRule.md) |
-| `TaskDetachedRule` | ⚠️ warning | 0.6 | `Task.detached { }` | [📖](Docs/Rules/TaskDetachedRule.md) |
-| `MainActorMissingRule` | ⚠️ warning | 0.6 | UIKit/AppKit subclasses missing `@MainActor` | [📖](Docs/Rules/MainActorMissingRule.md) |
-| `TimerRule` | ⚠️ warning | 0.5 | Callback-based `Timer.scheduledTimer` / `Timer(timeInterval:…)` | [📖](Docs/Rules/TimerRule.md) |
-| `ObservableObjectRule` | ⚠️ warning | 0.5 | `ObservableObject` + `@Published` | [📖](Docs/Rules/ObservableObjectRule.md) |
-| `CompletionHandlerRule` | ⚠️ warning | 0.5 | `completion: @escaping (...)` | [📖](Docs/Rules/CompletionHandlerRule.md) |
-| `PreconcurrencyRule` | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances | [📖](Docs/Rules/PreconcurrencyRule.md) |
-| `NotificationCenterRule` | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` | [📖](Docs/Rules/NotificationCenterRule.md) |
+| Rule | Severity | Weight | Detects |
+|------|----------|--------|---------|
+| [📖 `UncheckedSendableRule`](Docs/Rules/UncheckedSendableRule.md) | 🔴 error | 1.0 | `@unchecked Sendable` — bypasses all concurrency checks |
+| [📖 `NonisolatedUnsafeRule`](Docs/Rules/NonisolatedUnsafeRule.md) | 🔴 error | 0.9 | `nonisolated(unsafe)` stored properties |
+| [📖 `GlobalMutableStateRule`](Docs/Rules/GlobalMutableStateRule.md) | 🔴 error | 0.9 | Global `var` not concurrency-safe |
+| [📖 `SynchronizationPrimitiveRule`](Docs/Rules/SynchronizationPrimitiveRule.md) | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. |
+| [📖 `ThreadRule`](Docs/Rules/ThreadRule.md) | ⚠️ warning | 0.7 | `Thread.detachNewThread`, `Thread.isMainThread`, `Thread.main` |
+| [📖 `DispatchQueueRule`](Docs/Rules/DispatchQueueRule.md) | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async { }`, `.sync { }` |
+| [📖 `OperationQueueMainRule`](Docs/Rules/OperationQueueMainRule.md) | ⚠️ warning | 0.7 | `OperationQueue.main` |
+| [📖 `CombineRule`](Docs/Rules/CombineRule.md) | ⚠️ warning | 0.6 | `.sink { }`, `assign(to:on:)`, `AnyCancellable` |
+| [📖 `DispatchGroupRule`](Docs/Rules/DispatchGroupRule.md) | ⚠️ warning | 0.6 | `DispatchGroup()` usage |
+| [📖 `TaskDetachedRule`](Docs/Rules/TaskDetachedRule.md) | ⚠️ warning | 0.6 | `Task.detached { }` |
+| [📖 `MainActorMissingRule`](Docs/Rules/MainActorMissingRule.md) | ⚠️ warning | 0.6 | UIKit/AppKit subclasses missing `@MainActor` |
+| [📖 `TimerRule`](Docs/Rules/TimerRule.md) | ⚠️ warning | 0.5 | Callback-based `Timer.scheduledTimer` / `Timer(timeInterval:…)` |
+| [📖 `ObservableObjectRule`](Docs/Rules/ObservableObjectRule.md) | ⚠️ warning | 0.5 | `ObservableObject` + `@Published` |
+| [📖 `CompletionHandlerRule`](Docs/Rules/CompletionHandlerRule.md) | ⚠️ warning | 0.5 | `completion: @escaping (...)` |
+| [📖 `PreconcurrencyRule`](Docs/Rules/PreconcurrencyRule.md) | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances |
+| [📖 `NotificationCenterRule`](Docs/Rules/NotificationCenterRule.md) | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` |
 
 ### Code-Quality Rules (opt-in via `--include-quality-rules`)
 
-| Rule | Severity | Weight | Detects | Docs |
-|------|----------|--------|---------|------|
-| `ForceTryRule` | 🔴 error | 0.8 | `try!` | [📖](Docs/Rules/ForceTryRule.md) |
-| `ForceUnwrapRule` | ⚠️ warning | 0.3 | `value!` | [📖](Docs/Rules/ForceUnwrapRule.md) |
+| Rule | Severity | Weight | Detects |
+|------|----------|--------|---------|
+| [📖 `ForceTryRule`](Docs/Rules/ForceTryRule.md) | 🔴 error | 0.8 | `try!` |
+| [📖 `ForceUnwrapRule`](Docs/Rules/ForceUnwrapRule.md) | ⚠️ warning | 0.3 | `value!` |
 
 ---
 
