@@ -3,6 +3,7 @@ import SwiftSyntax
 /// Detects `OperationQueue.main.addOperation` usage.
 /// `OperationQueue.main` is the Objective-C era equivalent of `DispatchQueue.main`.
 /// In Swift 6, prefer `@MainActor` isolation or `Task { @MainActor in ... }`.
+/// - SeeAlso: [OperationQueueMainRule documentation](../../../../Docs/Rules/OperationQueueMainRule.md)
 public struct OperationQueueMainRule: Rule {
     public var name: String { "OperationQueueMainRule" }
     public init() {}

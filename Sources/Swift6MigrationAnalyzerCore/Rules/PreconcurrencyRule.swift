@@ -9,6 +9,7 @@ import SwiftSyntax
 /// Every `@preconcurrency` annotation represents a suppressed Swift 6 issue
 /// that must eventually be resolved by adding proper `Sendable` conformances
 /// or actor isolation to the offending types.
+/// - SeeAlso: [PreconcurrencyRule documentation](../../../../Docs/Rules/PreconcurrencyRule.md)
 public struct PreconcurrencyRule: Rule {
     public var name: String { "PreconcurrencyRule" }
     public init() {}

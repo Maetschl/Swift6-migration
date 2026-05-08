@@ -5,6 +5,7 @@ import SwiftSyntax
 /// In Swift 6, notification observers that capture `self` from a `@MainActor` context
 /// generate "Sending 'self' risks causing data races" warnings. The fix is to explicitly
 /// annotate observer closures with `@MainActor` or use async notification sequences.
+/// - SeeAlso: [NotificationCenterRule documentation](../../../../Docs/Rules/NotificationCenterRule.md)
 public struct NotificationCenterRule: Rule {
     public var name: String { "NotificationCenterRule" }
     public init() {}
