@@ -2,6 +2,8 @@
 
 A command-line tool to analyze Swift 5 codebases and detect patterns that need attention when migrating to Swift 6. Built with SwiftSyntax for accurate, syntax-based analysis.
 
+<img width="1162" height="992" alt="Screenshot 2026-05-09 at 01 00 53" src="https://github.com/user-attachments/assets/0ca318e8-6809-4ba7-9b11-73ff7ce4937a" />
+
 ---
 
 ## Features
