@@ -13,23 +13,36 @@ public struct HTMLReporter: Reporter {
         let totalWarnings = allFindings.filter { $0.severity == .warning }.count
         let totalFiles    = modules.reduce(0) { $0 + $1.fileCount }
         let totalLines    = modules.reduce(0) { $0 + $1.totalLinesOfCode }
+        let maxDepthFound = modules.map(\.depth).max() ?? 0
 
-        // Indicators totals
         let totalActors    = modules.reduce(0) { $0 + $1.migrationIndicators.actorDeclarationCount }
         let totalMainActor = modules.reduce(0) { $0 + $1.migrationIndicators.mainActorAnnotationCount }
         let totalAsync     = modules.reduce(0) { $0 + $1.migrationIndicators.asyncFunctionCount }
         let totalSendable  = modules.reduce(0) { $0 + $1.migrationIndicators.sendableConformanceCount }
 
+        // Module table rows
         let moduleRows = modules.map { module -> String in
-            let scoreColor = module.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
-            let ind = module.migrationIndicators
-            let aggrScore = String(format: "%.2f", module.aggregateScore)
-            let ownScore  = module.aggregateScore != module.score ? "<small style='color:#888'> (own: \(String(format: "%.2f", module.score)))</small>" : ""
+            let scoreColor   = module.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
+            let ind          = module.migrationIndicators
+            let aggrScore    = String(format: "%.2f", module.aggregateScore)
+            let ownScoreNote = module.aggregateScore != module.score
+                ? "<small style='color:#888'> (own: \(String(format: "%.2f", module.score)))</small>"
+                : ""
+            let safeId       = jsId(module.qualifiedName)
+            let parentSafeId = module.parentQualifiedName.map { jsId($0) } ?? ""
+            let hasChildren  = !module.childQualifiedNames.isEmpty
+            let toggleBtn    = hasChildren
+                ? "<button class='toggle-btn' onclick='event.stopPropagation();toggleCollapse(\"\(safeId)\")' title='Collapse sub-modules'>&#9660;</button>"
+                : "<span class='toggle-spacer'></span>"
+            let depthChevrons = module.depth > 0
+                ? "<span class='depth-chevron'>\(String(repeating: "›", count: module.depth))</span>"
+                : ""
+            let paddingLeft = 8 + module.depth * 20
             return """
-            <tr onclick="showModule('\(jsId(module.qualifiedName))')" style="cursor:pointer">
-              <td style="padding-left:\(8 + module.depth * 16)px">\(module.depth > 0 ? "<span style='color:#aaa;margin-right:4px'>" + String(repeating: "›", count: module.depth) + "</span>" : "")<strong>\(escapeHTML(module.name))</strong></td>
+            <tr class="module-row" data-depth="\(module.depth)" data-safe-id="\(safeId)" data-parent-id="\(parentSafeId)" onclick="showModule('\(safeId)')" style="cursor:pointer">
+              <td style="padding-left:\(paddingLeft)px">\(depthChevrons)\(toggleBtn)<strong>\(escapeHTML(module.name))</strong></td>
               <td><span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span></td>
-              <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(aggrScore)</span>\(ownScore)</td>
+              <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(aggrScore)</span>\(ownScoreNote)</td>
               <td>\(module.fileCount)</td>
               <td>\(module.findings.count)</td>
               <td class="indicator">\(ind.actorDeclarationCount)</td>
@@ -39,6 +52,7 @@ public struct HTMLReporter: Reporter {
             """
         }.joined()
 
+        // Module detail sections
         let moduleDetailSections = modules.map { module -> String in
             let ind = module.migrationIndicators
             let indicatorBar = """
@@ -49,8 +63,6 @@ public struct HTMLReporter: Reporter {
               <span class="ind-chip sendable">\(ind.sendableConformanceCount) Sendable</span>
             </div>
             """
-
-            // Children summary table (if this module has sub-modules)
             let childrenSummary: String
             if !module.childQualifiedNames.isEmpty {
                 let childRows = module.childQualifiedNames.compactMap { cName -> String? in
@@ -69,17 +81,19 @@ public struct HTMLReporter: Reporter {
                 childrenSummary = ""
             }
 
+            let safeId = jsId(module.qualifiedName)
+
             if module.findings.isEmpty {
                 let emptyMsg = module.childQualifiedNames.isEmpty
-                    ? "<p class=\"empty-state\">✅ No migration issues found in this module.</p>"
+                    ? "<p class=\"empty-state\">&#x2705; No migration issues found in this module.</p>"
                     : "<p class=\"empty-state\">No direct findings — see sub-modules above.</p>"
                 return """
-                <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
+                <div id="module-\(safeId)" class="module-detail" style="display:none">
                   <div class="module-header">
                     <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
                     <span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span>
                     <span class="score-pill-lg">Subtree Score \(String(format: "%.2f", module.aggregateScore))</span>
-                    <span class="meta">\(module.fileCount) files · \(module.totalLinesOfCode) lines</span>
+                    <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
                   </div>
                   \(indicatorBar)
                   \(childrenSummary)
@@ -93,7 +107,7 @@ public struct HTMLReporter: Reporter {
                 let ruleFindings = byRule[ruleName] ?? []
                 let weight = FindingComplexity.weight(for: ruleName)
                 let items = ruleFindings.map { f -> String in
-                    "<li><span class=\"badge \(f.severity.htmlClass)\">\(f.severity.rawValue)</span> <code>\(escapeHTML(f.location))</code> — \(escapeHTML(f.message))</li>"
+                    "<li><span class=\"badge \(f.severity.htmlClass)\">\(f.severity.rawValue)</span> <code>\(escapeHTML(f.location))</code> &mdash; \(escapeHTML(f.message))</li>"
                 }.joined(separator: "\n")
                 return """
                 <div class="rule-card">
@@ -108,15 +122,15 @@ public struct HTMLReporter: Reporter {
             }.joined()
 
             let scoreLabel = module.aggregateScore != module.score
-                ? "Own Score \(String(format: "%.2f", module.score)) · Subtree \(String(format: "%.2f", module.aggregateScore))"
+                ? "Own Score \(String(format: "%.2f", module.score)) &middot; Subtree \(String(format: "%.2f", module.aggregateScore))"
                 : "Score \(String(format: "%.2f", module.score))"
             return """
-            <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
+            <div id="module-\(safeId)" class="module-detail" style="display:none">
               <div class="module-header">
                 <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
                 <span class="status-badge \(module.aggregateStatus.htmlClass)">\(escapeHTML(module.aggregateStatus.rawValue))</span>
                 <span class="score-pill-lg">\(scoreLabel)</span>
-                <span class="meta">\(module.fileCount) files · \(module.totalLinesOfCode) lines</span>
+                <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
               </div>
               \(indicatorBar)
               \(childrenSummary)
@@ -139,20 +153,64 @@ public struct HTMLReporter: Reporter {
             """
         }.joined()
 
-        // Complexity table
         let weightRows = FindingComplexity.weightTable.map { entry -> String in
             "<tr><td><code>\(escapeHTML(entry.rule))</code></td><td><strong>\(entry.weight)</strong></td><td>\(escapeHTML(entry.rationale))</td></tr>"
         }.joined()
 
         let statusColor = projectStatus == .migrated ? "#34c759" : "#ff9500"
 
+        return buildHTML(
+            projectName: projectName,
+            projectStatus: projectStatus,
+            projectScore: projectScore,
+            statusColor: statusColor,
+            modules: modules,
+            totalErrors: totalErrors,
+            totalWarnings: totalWarnings,
+            totalFiles: totalFiles,
+            totalLines: totalLines,
+            totalActors: totalActors,
+            totalMainActor: totalMainActor,
+            totalAsync: totalAsync,
+            totalSendable: totalSendable,
+            maxDepthFound: maxDepthFound,
+            moduleRows: moduleRows,
+            moduleDetailSections: moduleDetailSections,
+            allFindings: allFindings,
+            allRows: allRows,
+            weightRows: weightRows
+        )
+    }
+
+    // swiftlint:disable:next function_parameter_count
+    private func buildHTML(
+        projectName: String,
+        projectStatus: MigrationStatus,
+        projectScore: Double,
+        statusColor: String,
+        modules: [ModuleResult],
+        totalErrors: Int,
+        totalWarnings: Int,
+        totalFiles: Int,
+        totalLines: Int,
+        totalActors: Int,
+        totalMainActor: Int,
+        totalAsync: Int,
+        totalSendable: Int,
+        maxDepthFound: Int,
+        moduleRows: String,
+        moduleDetailSections: String,
+        allFindings: [Finding],
+        allRows: String,
+        weightRows: String
+    ) -> String {
         return """
         <!DOCTYPE html>
         <html lang="en">
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Swift 6 Migration — \(escapeHTML(projectName))</title>
+        <title>Swift 6 Migration \u{2014} \(escapeHTML(projectName))</title>
         <style>
           *{box-sizing:border-box;margin:0;padding:0}
           body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f7;color:#1d1d1f}
@@ -167,7 +225,6 @@ public struct HTMLReporter: Reporter {
           .stat.score .num{color:#ff9500}
           .stat.errors .num{color:#ff3b30}
           .stat.warnings .num{color:#ff9500}
-          .stat.positive .num{color:#34c759}
           .indicators-strip{display:flex;gap:.75rem;padding:0 2.5rem 1.25rem;flex-wrap:wrap}
           .ind-stat{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.5rem .9rem;font-size:.85rem}
           .ind-stat strong{color:#16a34a;font-size:1.1rem;margin-right:.3rem}
@@ -176,6 +233,17 @@ public struct HTMLReporter: Reporter {
           nav button.active,nav button:hover{background:#1d1d1f;color:#fff;border-color:#1d1d1f}
           .panel{display:none;padding:0 2.5rem 2.5rem}
           .panel.active{display:block}
+          .table-toolbar{display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap}
+          .toolbar-label{font-size:.82rem;color:#6e6e73;font-weight:600}
+          .stepper-btn{background:#fff;border:1.5px solid #d1d1d6;border-radius:8px;padding:.28rem .7rem;font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;min-width:2.1rem;line-height:1.4}
+          .stepper-btn:hover{background:#1d1d1f;color:#fff;border-color:#1d1d1f}
+          .stepper-btn:disabled{opacity:.35;cursor:default;pointer-events:none}
+          #depth-value{font-size:.95rem;font-weight:700;min-width:1.6rem;text-align:center;display:inline-block;background:#fff;border:1.5px solid #d1d1d6;border-radius:8px;padding:.28rem .5rem}
+          .toolbar-sep{width:1px;height:1.6rem;background:#d1d1d6;margin:0 .15rem}
+          .toggle-btn{background:none;border:none;cursor:pointer;font-size:.68rem;color:#bbb;padding:0;margin-right:4px;line-height:1;vertical-align:middle;transition:color .12s;display:inline-block;width:14px}
+          .toggle-btn:hover{color:#1d1d1f}
+          .toggle-spacer{display:inline-block;width:18px}
+          .depth-chevron{color:#ccc;margin-right:4px;font-size:.8rem;user-select:none;letter-spacing:1px}
           .module-detail{display:none;margin-bottom:1.5rem}
           .module-header{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem}
           .module-header h2{font-size:1.25rem}
@@ -220,8 +288,8 @@ public struct HTMLReporter: Reporter {
         </head>
         <body>
         <header>
-          <h1>🔍 Swift 6 Migration Report</h1>
-          <div class="subtitle">\(escapeHTML(projectName)) · Generated \(Date().formatted())</div>
+          <h1>&#x1F50D; Swift 6 Migration Report</h1>
+          <div class="subtitle">\(escapeHTML(projectName)) &middot; Generated \(Date().formatted())</div>
           <div class="project-status">\(projectStatus.icon) \(projectStatus.rawValue)</div>
         </header>
 
@@ -249,25 +317,33 @@ public struct HTMLReporter: Reporter {
 
         <!-- Modules panel -->
         <div id="panel-modules" class="panel active">
+          <div class="table-toolbar">
+            <span class="toolbar-label">Depth:</span>
+            <button class="stepper-btn" id="btn-depth-dec" onclick="changeDepth(-1)">&#8722;</button>
+            <span id="depth-value">\(maxDepthFound)</span>
+            <button class="stepper-btn" id="btn-depth-inc" onclick="changeDepth(1)">+</button>
+            <div class="toolbar-sep"></div>
+            <button class="stepper-btn" onclick="expandAll()">Expand All</button>
+            <button class="stepper-btn" onclick="collapseAll()">Collapse All</button>
+          </div>
           <h2 class="section-title">Module Overview</h2>
           <table id="modules-table">
             <thead>
               <tr>
-                <th onclick="sortTable('modules-table',0)">Module ↕</th>
-                <th onclick="sortTable('modules-table',1)">Status ↕</th>
-                <th onclick="sortTable('modules-table',2)">Score ↕</th>
-                <th onclick="sortTable('modules-table',3)">Files ↕</th>
-                <th onclick="sortTable('modules-table',4)">Findings ↕</th>
-                <th onclick="sortTable('modules-table',5)" title="actor declarations">Actors ↕</th>
-                <th onclick="sortTable('modules-table',6)" title="@MainActor">@Main ↕</th>
-                <th onclick="sortTable('modules-table',7)" title="async functions">async ↕</th>
+                <th onclick="sortTable('modules-table',0)">Module &#x21D5;</th>
+                <th onclick="sortTable('modules-table',1)">Status &#x21D5;</th>
+                <th onclick="sortTable('modules-table',2)">Score &#x21D5;</th>
+                <th onclick="sortTable('modules-table',3)">Files &#x21D5;</th>
+                <th onclick="sortTable('modules-table',4)">Findings &#x21D5;</th>
+                <th onclick="sortTable('modules-table',5)" title="actor declarations">Actors &#x21D5;</th>
+                <th onclick="sortTable('modules-table',6)" title="@MainActor">@Main &#x21D5;</th>
+                <th onclick="sortTable('modules-table',7)" title="async functions">async &#x21D5;</th>
               </tr>
             </thead>
             <tbody>\(moduleRows)</tbody>
           </table>
-
           <div id="module-details" style="margin-top:1.5rem;display:none">
-            <button class="back-btn" onclick="hideModuleDetails()">← Back to module list</button>
+            <button class="back-btn" onclick="hideModuleDetails()">&#8592; Back to module list</button>
             \(moduleDetailSections)
           </div>
         </div>
@@ -278,10 +354,10 @@ public struct HTMLReporter: Reporter {
           <table id="findings-table">
             <thead>
               <tr>
-                <th onclick="sortTable('findings-table',0)">Location ↕</th>
-                <th onclick="sortTable('findings-table',1)">Severity ↕</th>
-                <th onclick="sortTable('findings-table',2)">Rule ↕</th>
-                <th onclick="sortTable('findings-table',3)">Weight ↕</th>
+                <th onclick="sortTable('findings-table',0)">Location &#x21D5;</th>
+                <th onclick="sortTable('findings-table',1)">Severity &#x21D5;</th>
+                <th onclick="sortTable('findings-table',2)">Rule &#x21D5;</th>
+                <th onclick="sortTable('findings-table',3)">Weight &#x21D5;</th>
                 <th>Message</th>
               </tr>
             </thead>
@@ -292,7 +368,7 @@ public struct HTMLReporter: Reporter {
         <!-- Complexity table panel -->
         <div id="panel-complexity" class="panel">
           <h2 class="section-title">Finding Complexity Weight Table</h2>
-          <p style="color:#6e6e73;font-size:.9rem;margin-bottom:1rem">Score formula: <strong>SUM(finding × complexity weight)</strong>. Higher score = more migration effort required.</p>
+          <p style="color:#6e6e73;font-size:.9rem;margin-bottom:1rem">Score formula: <strong>SUM(finding &#xD7; complexity weight)</strong>. Higher score = more migration effort required.</p>
           <table>
             <thead><tr><th>Rule</th><th>Weight</th><th>Rationale</th></tr></thead>
             <tbody>\(weightRows)</tbody>
@@ -300,12 +376,17 @@ public struct HTMLReporter: Reporter {
         </div>
 
         <script>
+        const maxDepthInData = \(maxDepthFound);
+        let currentMaxDepth  = maxDepthInData;
+        const collapsedSet   = new Set();
+
         function showPanel(id) {
           document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
           document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
           document.getElementById('panel-' + id).classList.add('active');
           event.target.classList.add('active');
         }
+
         function showModule(safeId) {
           document.querySelectorAll('.module-detail').forEach(d => d.style.display = 'none');
           const detail = document.getElementById('module-' + safeId);
@@ -313,22 +394,70 @@ public struct HTMLReporter: Reporter {
             detail.style.display = 'block';
             document.getElementById('module-details').style.display = 'block';
             document.getElementById('modules-table').style.display = 'none';
+            document.querySelector('.table-toolbar').style.display = 'none';
             detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }
+
         function hideModuleDetails() {
           document.getElementById('module-details').style.display = 'none';
           document.getElementById('modules-table').style.display = 'table';
+          document.querySelector('.table-toolbar').style.display = '';
           document.querySelectorAll('.module-detail').forEach(d => d.style.display = 'none');
         }
+
+        function changeDepth(delta) {
+          currentMaxDepth = Math.max(0, Math.min(maxDepthInData, currentMaxDepth + delta));
+          document.getElementById('depth-value').textContent = currentMaxDepth;
+          document.getElementById('btn-depth-dec').disabled = currentMaxDepth === 0;
+          document.getElementById('btn-depth-inc').disabled = currentMaxDepth === maxDepthInData;
+          applyFilters();
+        }
+
+        function toggleCollapse(safeId) {
+          if (collapsedSet.has(safeId)) { collapsedSet.delete(safeId); } else { collapsedSet.add(safeId); }
+          const btn = document.querySelector('tr[data-safe-id="' + safeId + '"] .toggle-btn');
+          if (btn) btn.innerHTML = collapsedSet.has(safeId) ? '&#9654;' : '&#9660;';
+          applyFilters();
+        }
+
+        function expandAll() {
+          collapsedSet.clear();
+          document.querySelectorAll('.toggle-btn').forEach(b => b.innerHTML = '&#9660;');
+          applyFilters();
+        }
+
+        function collapseAll() {
+          document.querySelectorAll('tr.module-row').forEach(row => {
+            if (row.querySelector('.toggle-btn')) collapsedSet.add(row.dataset.safeId);
+          });
+          document.querySelectorAll('.toggle-btn').forEach(b => b.innerHTML = '&#9654;');
+          applyFilters();
+        }
+
+        function isAncestorCollapsed(parentId) {
+          if (!parentId) return false;
+          if (collapsedSet.has(parentId)) return true;
+          const p = document.querySelector('tr[data-safe-id="' + parentId + '"]');
+          return p ? isAncestorCollapsed(p.dataset.parentId || '') : false;
+        }
+
+        function applyFilters() {
+          document.querySelectorAll('tr.module-row').forEach(row => {
+            const depth  = parseInt(row.dataset.depth);
+            const hidden = depth > currentMaxDepth || isAncestorCollapsed(row.dataset.parentId || '');
+            row.style.display = hidden ? 'none' : '';
+          });
+        }
+
         function sortTable(tableId, col) {
           const table = document.getElementById(tableId);
           const tbody = table.tBodies[0];
-          const rows = Array.from(tbody.rows);
-          const asc = table.dataset.sortCol == col && table.dataset.sortDir === 'asc';
+          const rows  = Array.from(tbody.rows);
+          const asc   = table.dataset.sortCol == col && table.dataset.sortDir === 'asc';
           rows.sort((a, b) => {
-            const at = a.cells[col].innerText.trim();
-            const bt = b.cells[col].innerText.trim();
+            const at = a.cells[col].innerText.trim().replace(/^[^A-Za-z0-9]+/, '');
+            const bt = b.cells[col].innerText.trim().replace(/^[^A-Za-z0-9]+/, '');
             const an = parseFloat(at), bn = parseFloat(bt);
             if (!isNaN(an) && !isNaN(bn)) return asc ? bn - an : an - bn;
             return asc ? bt.localeCompare(at) : at.localeCompare(bt);
@@ -337,6 +466,10 @@ public struct HTMLReporter: Reporter {
           table.dataset.sortCol = col;
           table.dataset.sortDir = asc ? 'desc' : 'asc';
         }
+
+        // Init stepper button states
+        document.getElementById('btn-depth-dec').disabled = currentMaxDepth === 0;
+        document.getElementById('btn-depth-inc').disabled = currentMaxDepth === maxDepthInData;
         </script>
         </body>
         </html>
