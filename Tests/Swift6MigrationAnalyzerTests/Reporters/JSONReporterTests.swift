@@ -122,3 +122,63 @@ struct JSONReporterTests {
         #expect(total == 2)
     }
 }
+
+
+// MARK: - Hierarchy & aggregate fields (appended)
+
+extension JSONReporterTests {
+
+    @Test("JSON module contains aggregateScore field")
+    func jsonHasAggregateScore() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [makeFinding(rule: "UncheckedSendableRule")],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: 1.0
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        #expect(output.contains("aggregateScore"))
+    }
+
+    @Test("JSON module contains aggregateStatus field")
+    func jsonHasAggregateStatus() {
+        let modules = [makeModuleResult(name: "M", findings: [makeFinding()])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("aggregateStatus"))
+    }
+
+    @Test("JSON module contains childQualifiedNames array")
+    func jsonHasChildQualifiedNames() {
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"]
+        )
+        let output = reporter.generate(modules: [parent], projectName: "P")
+        #expect(output.contains("childQualifiedNames"))
+        #expect(output.contains("Parent"))  // slash JSON-escaped as \/
+    }
+
+    @Test("JSON module contains qualifiedName field")
+    func jsonHasQualifiedName() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let output = reporter.generate(modules: [child], projectName: "P")
+        #expect(output.contains("qualifiedName"))
+        #expect(output.contains("Parent"))  // slash JSON-escaped as \/
+    }
+
+    @Test("JSON module contains parentQualifiedName field for nested module")
+    func jsonHasParentQualifiedName() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let output = reporter.generate(modules: [child], projectName: "P")
+        #expect(output.contains("parentQualifiedName"))
+    }
+}

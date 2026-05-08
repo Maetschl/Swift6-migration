@@ -6,7 +6,7 @@ struct MarkdownReporterTests {
 
     let reporter = MarkdownReporter()
 
-    // MARK: - Module report structure
+    // MARK: - Project overview
 
     @Test("Report contains project name in title")
     func containsProjectName() {
@@ -35,9 +35,19 @@ struct MarkdownReporterTests {
         let finding = makeFinding(rule: "UncheckedSendableRule")
         let modules = [makeModuleResult(name: "M", findings: [finding])]
         let output = reporter.generate(modules: modules, projectName: "P")
-        #expect(output.contains("Migration Score") || output.contains("score"))
+        #expect(output.contains("Score") || output.contains("score"))
         #expect(output.contains("1.00"))
     }
+
+    @Test("Report shows total file and line counts in overview")
+    func showsTotals() {
+        let modules = [makeModuleResult(name: "M", findings: [], fileCount: 5, linesOfCode: 200)]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("5"))
+        #expect(output.contains("200"))
+    }
+
+    // MARK: - Module overview table
 
     @Test("Report lists each module in the Modules table")
     func listsModulesInTable() {
@@ -50,6 +60,44 @@ struct MarkdownReporterTests {
         #expect(output.contains("Beta"))
     }
 
+    @Test("Overview table contains Own Score and Subtree Score columns")
+    func tableHasBothScoreColumns() {
+        let modules = [makeModuleResult(name: "M", findings: [makeFinding()])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("Own Score"))
+        #expect(output.contains("Subtree Score"))
+    }
+
+    @Test("Overview table contains Depth column")
+    func tableHasDepthColumn() {
+        let modules = [makeModuleResult(name: "M", findings: [])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("Depth"))
+    }
+
+    @Test("Container module shows aggregateStatus in table — pending when children have findings")
+    func containerShowsPendingViaAggregate() {
+        let child = makeModuleResult(
+            name: "Sub",
+            findings: [makeFinding()],
+            depth: 1,
+            parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent",
+            findings: [],
+            depth: 0,
+            childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score  // subtree includes child's score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        // Parent's aggregateStatus should be pendingMigration (aggregateScore > 0)
+        // The overview table should show ⏳ for parent
+        #expect(output.contains("⏳"))
+    }
+
+    // MARK: - Per-module findings section (hierarchical)
+
     @Test("Report includes rule complexity weight in per-module section")
     func includesComplexityWeight() {
         let finding = makeFinding(severity: .error, rule: "ForceTryRule")
@@ -58,12 +106,80 @@ struct MarkdownReporterTests {
         #expect(output.contains("0.8"))
     }
 
-    @Test("Report contains the complexity weight table section")
-    func containsComplexityTable() {
-        let output = reporter.generate(modules: [], projectName: "P")
-        #expect(output.contains("Finding Complexity Weight Table"))
-        #expect(output.contains("SUM(finding"))
+    @Test("Container module with no findings appears as group header when children have findings")
+    func containerAppearsAsGroupHeaderForChildren() {
+        let child = makeModuleResult(
+            name: "Sub",
+            findings: [makeFinding()],
+            depth: 1,
+            parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent",
+            findings: [],
+            depth: 0,
+            childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        // Parent should appear as a group heading in the Findings section
+        #expect(output.contains("Parent"))
+        #expect(output.contains("Sub"))
+        #expect(output.contains("No findings in this module directly"))
     }
+
+    @Test("Container with no subtree findings is omitted from Findings section")
+    func containerWithCleanSubtreeOmittedFromFindings() {
+        let child = makeModuleResult(
+            name: "CleanSub",
+            findings: [],
+            depth: 1,
+            parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent",
+            findings: [],
+            depth: 0,
+            childQualifiedNames: ["Parent/CleanSub"],
+            aggregateScore: 0
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        // Neither parent nor child should appear in per-module findings section
+        #expect(!output.contains("## ⏳ Parent"))
+        #expect(!output.contains("## ✅ Parent"))
+    }
+
+    @Test("Findings section uses Findings heading")
+    func findingsSectionHeader() {
+        let modules = [makeModuleResult(name: "M", findings: [makeFinding()])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("## Findings"))
+    }
+
+    @Test("Rule card heading does not conflict with module heading for depth-1 module")
+    func ruleCardHeadingStable() {
+        // depth-1 module uses ### heading; rule cards should use #### (one level below)
+        let finding = makeFinding(rule: "ForceUnwrapRule")
+        let child = makeModuleResult(
+            name: "Sub",
+            findings: [finding],
+            depth: 1,
+            parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent",
+            findings: [],
+            depth: 0,
+            childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        // Module heading for depth-1 is ###; rule card should be ####
+        #expect(output.contains("\n#### ForceUnwrapRule"))
+        #expect(!output.contains("\n### ForceUnwrapRule "))
+    }
+
+    // MARK: - Summary by Rule
 
     @Test("Report includes Summary by Rule table")
     func containsSummaryByRule() {
@@ -74,23 +190,13 @@ struct MarkdownReporterTests {
         #expect(output.contains("Score Contribution"))
     }
 
-    @Test("Migrated modules do not appear in per-module findings section")
-    func migratedModulesSkippedInFindings() {
-        let modules = [
-            makeModuleResult(name: "CleanModule", findings: [])
-        ]
-        let output = reporter.generate(modules: modules, projectName: "P")
-        // The heading "## ✅ CleanModule" or "## ⏳ CleanModule" should not appear
-        // since there are no findings to list
-        #expect(!output.contains("## ✅ CleanModule"))
-    }
+    // MARK: - Complexity table
 
-    @Test("Report shows total file and line counts in overview")
-    func showsTotals() {
-        let modules = [makeModuleResult(name: "M", findings: [], fileCount: 5, linesOfCode: 200)]
-        let output = reporter.generate(modules: modules, projectName: "P")
-        #expect(output.contains("5"))
-        #expect(output.contains("200"))
+    @Test("Report contains the complexity weight table section")
+    func containsComplexityTable() {
+        let output = reporter.generate(modules: [], projectName: "P")
+        #expect(output.contains("Finding Complexity Weight Table"))
+        #expect(output.contains("SUM(finding"))
     }
 
     // MARK: - Flat report (legacy)
@@ -110,10 +216,7 @@ struct MarkdownReporterTests {
 
     @Test("Flat report groups findings by rule name")
     func flatReportGroupsByRule() {
-        let findings = [
-            makeFinding(rule: "ForceTryRule"),
-            makeFinding(rule: "ForceUnwrapRule")
-        ]
+        let findings = [makeFinding(rule: "ForceTryRule"), makeFinding(rule: "ForceUnwrapRule")]
         let output = reporter.generate(findings: findings)
         #expect(output.contains("ForceTryRule"))
         #expect(output.contains("ForceUnwrapRule"))

@@ -7,7 +7,7 @@ public struct HTMLReporter: Reporter {
 
     public func generate(modules: [ModuleResult], projectName: String) -> String {
         let allFindings  = modules.flatMap { $0.findings }
-        let projectScore = modules.reduce(0.0) { $0 + $1.score }
+        let projectScore = modules.filter { $0.depth == 0 }.reduce(0.0) { $0 + $1.aggregateScore }
         let projectStatus: MigrationStatus = projectScore == 0 ? .migrated : .pendingMigration
         let totalErrors   = allFindings.filter { $0.severity == .error }.count
         let totalWarnings = allFindings.filter { $0.severity == .warning }.count
@@ -21,13 +21,15 @@ public struct HTMLReporter: Reporter {
         let totalSendable  = modules.reduce(0) { $0 + $1.migrationIndicators.sendableConformanceCount }
 
         let moduleRows = modules.map { module -> String in
-            let scoreColor = module.status == .migrated ? "#34c759" : "#ff9500"
+            let scoreColor = module.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
             let ind = module.migrationIndicators
+            let aggrScore = String(format: "%.2f", module.aggregateScore)
+            let ownScore  = module.aggregateScore != module.score ? "<small style='color:#888'> (own: \(String(format: "%.2f", module.score)))</small>" : ""
             return """
             <tr onclick="showModule('\(jsId(module.qualifiedName))')" style="cursor:pointer">
-              <td style="padding-left:\(8 + module.depth * 16)px">\(module.depth > 0 ? "<span style='color:#aaa;margin-right:4px'>" + String(repeating: "›", count: module.depth) + "</span>" : "")<strong>\(escapeHTML(module.qualifiedName))</strong></td>
-              <td><span class="status-badge \(module.status.htmlClass)">\(module.status.icon) \(escapeHTML(module.status.rawValue))</span></td>
-              <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(String(format: "%.2f", module.score))</span></td>
+              <td style="padding-left:\(8 + module.depth * 16)px">\(module.depth > 0 ? "<span style='color:#aaa;margin-right:4px'>" + String(repeating: "›", count: module.depth) + "</span>" : "")<strong>\(escapeHTML(module.name))</strong></td>
+              <td><span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span></td>
+              <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(aggrScore)</span>\(ownScore)</td>
               <td>\(module.fileCount)</td>
               <td>\(module.findings.count)</td>
               <td class="indicator">\(ind.actorDeclarationCount)</td>
@@ -48,15 +50,40 @@ public struct HTMLReporter: Reporter {
             </div>
             """
 
+            // Children summary table (if this module has sub-modules)
+            let childrenSummary: String
+            if !module.childQualifiedNames.isEmpty {
+                let childRows = module.childQualifiedNames.compactMap { cName -> String? in
+                    guard let child = modules.first(where: { $0.qualifiedName == cName }) else { return nil }
+                    let cc = child.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
+                    return "<tr><td><strong>\(escapeHTML(child.name))</strong></td><td><span class='status-badge \(child.aggregateStatus.htmlClass)'>\(child.aggregateStatus.icon) \(escapeHTML(child.aggregateStatus.rawValue))</span></td><td><span class='score-pill' style='background:\(cc)20;color:\(cc)'>\(String(format: "%.2f", child.aggregateScore))</span></td><td>\(child.findings.count)</td></tr>"
+                }.joined(separator: "\n")
+                childrenSummary = """
+                <h3>Sub-modules</h3>
+                <table class="findings-table" style="width:100%">
+                  <thead><tr><th>Module</th><th>Status</th><th>Subtree Score</th><th>Findings</th></tr></thead>
+                  <tbody>\(childRows)</tbody>
+                </table>
+                """
+            } else {
+                childrenSummary = ""
+            }
+
             if module.findings.isEmpty {
+                let emptyMsg = module.childQualifiedNames.isEmpty
+                    ? "<p class=\"empty-state\">✅ No migration issues found in this module.</p>"
+                    : "<p class=\"empty-state\">No direct findings — see sub-modules above.</p>"
                 return """
                 <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
                   <div class="module-header">
-                    <h2>\(module.status.icon) \(escapeHTML(module.qualifiedName))</h2>
-                    <span class="status-badge migrated">\(module.status.icon) \(escapeHTML(module.status.rawValue))</span>
+                    <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
+                    <span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span>
+                    <span class="score-pill-lg">Subtree Score \(String(format: "%.2f", module.aggregateScore))</span>
+                    <span class="meta">\(module.fileCount) files · \(module.totalLinesOfCode) lines</span>
                   </div>
                   \(indicatorBar)
-                  <p class="empty-state">✅ No migration issues found in this module.</p>
+                  \(childrenSummary)
+                  \(emptyMsg)
                 </div>
                 """
             }
@@ -80,15 +107,19 @@ public struct HTMLReporter: Reporter {
                 """
             }.joined()
 
+            let scoreLabel = module.aggregateScore != module.score
+                ? "Own Score \(String(format: "%.2f", module.score)) · Subtree \(String(format: "%.2f", module.aggregateScore))"
+                : "Score \(String(format: "%.2f", module.score))"
             return """
             <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
               <div class="module-header">
-                <h2>\(module.status.icon) \(escapeHTML(module.qualifiedName))</h2>
-                <span class="status-badge \(module.status.htmlClass)">\(escapeHTML(module.status.rawValue))</span>
-                <span class="score-pill-lg">Score \(String(format: "%.2f", module.score))</span>
+                <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
+                <span class="status-badge \(module.aggregateStatus.htmlClass)">\(escapeHTML(module.aggregateStatus.rawValue))</span>
+                <span class="score-pill-lg">\(scoreLabel)</span>
                 <span class="meta">\(module.fileCount) files · \(module.totalLinesOfCode) lines</span>
               </div>
               \(indicatorBar)
+              \(childrenSummary)
               \(ruleCards)
             </div>
             """
