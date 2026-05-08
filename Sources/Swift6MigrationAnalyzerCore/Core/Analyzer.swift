@@ -34,7 +34,6 @@ public struct Analyzer: Sendable {
     }
 
     /// Optional code-quality rules (not Swift 6 specific).
-    /// Enable with --include-quality-rules in the CLI.
     public static var qualityRules: [any Rule] {
         [
             ForceUnwrapRule(),
@@ -49,13 +48,14 @@ public struct Analyzer: Sendable {
 
     // MARK: - Module-aware analysis (primary entry point)
 
-    /// Detects modules inside `directory`, analyzes each one, and returns a `ModuleResult`
-    /// per module including migration status, score, and migration indicators.
+    /// Detects modules inside `directory` recursively up to `maxDepth`, analyzes each one,
+    /// and returns `ModuleResult` per module in depth-first tree order.
     public func analyzeModules(
         in directory: URL,
-        fileScanner: FileScanner
+        fileScanner: FileScanner,
+        maxDepth: Int = 4
     ) -> [ModuleResult] {
-        let moduleScanner = ModuleScanner(fileScanner: fileScanner)
+        let moduleScanner = ModuleScanner(fileScanner: fileScanner, maxDepth: maxDepth)
         let modules = moduleScanner.detectModules(in: directory)
 
         return modules.map { module in
@@ -67,15 +67,20 @@ public struct Analyzer: Sendable {
 
             return ModuleResult(
                 name: module.name,
+                qualifiedName: module.qualifiedName,
                 path: module.rootURL.path,
                 status: status,
                 score: score,
                 fileCount: module.sourceFiles.count,
                 totalLinesOfCode: linesOfCode,
                 findings: findings,
-                migrationIndicators: indicators
+                migrationIndicators: indicators,
+                depth: module.depth,
+                parentQualifiedName: module.parentQualifiedName
             )
-        }.sorted { $0.name < $1.name }
+        }
+        // Keep depth-first tree order from scanner; stable sort within siblings by name
+        // (scanner already returns them sorted alphabetically within each depth level)
     }
 
     /// Wraps a single file in a one-module result.
@@ -84,15 +89,19 @@ public struct Analyzer: Sendable {
         let linesOfCode = countLines(in: [file])
         let indicators = collectIndicators(in: [file])
         let score = FindingComplexity.score(for: findings)
+        let name = file.deletingPathExtension().lastPathComponent
         return ModuleResult(
-            name: file.deletingPathExtension().lastPathComponent,
+            name: name,
+            qualifiedName: name,
             path: file.path,
             status: score == 0 ? .migrated : .pendingMigration,
             score: score,
             fileCount: 1,
             totalLinesOfCode: linesOfCode,
             findings: findings,
-            migrationIndicators: indicators
+            migrationIndicators: indicators,
+            depth: 0,
+            parentQualifiedName: nil
         )
     }
 

@@ -24,8 +24,8 @@ public struct HTMLReporter: Reporter {
             let scoreColor = module.status == .migrated ? "#34c759" : "#ff9500"
             let ind = module.migrationIndicators
             return """
-            <tr onclick="showModule('\(jsId(module.name))')" style="cursor:pointer">
-              <td><strong>\(escapeHTML(module.name))</strong></td>
+            <tr onclick="showModule('\(jsId(module.qualifiedName))')" style="cursor:pointer">
+              <td style="padding-left:\(8 + module.depth * 16)px">\(module.depth > 0 ? "<span style='color:#aaa;margin-right:4px'>" + String(repeating: "›", count: module.depth) + "</span>" : "")<strong>\(escapeHTML(module.qualifiedName))</strong></td>
               <td><span class="status-badge \(module.status.htmlClass)">\(module.status.icon) \(escapeHTML(module.status.rawValue))</span></td>
               <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(String(format: "%.2f", module.score))</span></td>
               <td>\(module.fileCount)</td>
@@ -50,9 +50,9 @@ public struct HTMLReporter: Reporter {
 
             if module.findings.isEmpty {
                 return """
-                <div id="module-\(jsId(module.name))" class="module-detail" style="display:none">
+                <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
                   <div class="module-header">
-                    <h2>\(module.status.icon) \(escapeHTML(module.name))</h2>
+                    <h2>\(module.status.icon) \(escapeHTML(module.qualifiedName))</h2>
                     <span class="status-badge migrated">\(module.status.icon) \(escapeHTML(module.status.rawValue))</span>
                   </div>
                   \(indicatorBar)
@@ -81,9 +81,9 @@ public struct HTMLReporter: Reporter {
             }.joined()
 
             return """
-            <div id="module-\(jsId(module.name))" class="module-detail" style="display:none">
+            <div id="module-\(jsId(module.qualifiedName))" class="module-detail" style="display:none">
               <div class="module-header">
-                <h2>\(module.status.icon) \(escapeHTML(module.name))</h2>
+                <h2>\(module.status.icon) \(escapeHTML(module.qualifiedName))</h2>
                 <span class="status-badge \(module.status.htmlClass)">\(escapeHTML(module.status.rawValue))</span>
                 <span class="score-pill-lg">Score \(String(format: "%.2f", module.score))</span>
                 <span class="meta">\(module.fileCount) files · \(module.totalLinesOfCode) lines</span>
