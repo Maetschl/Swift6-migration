@@ -196,3 +196,82 @@ struct AnalyzerTests {
         return base
     }
 }
+
+
+// MARK: - Aggregate score and status tests (appended)
+
+extension AnalyzerTests {
+
+    @Test("Container module aggregateScore equals sum of its children scores")
+    func containerAggregateScoreIncludesChildren() throws {
+        // Need 2+ top-level dirs so the scanner detects them as separate modules
+        let root = try makeTempDir("AggScore", structure: [
+            "FeatureA/Sub1/File1.swift": "var global = 0",   // GlobalMutableState → weight 0.9
+            "FeatureA/Sub2/File2.swift": "let x = 1",        // clean
+            "FeatureB/Core.swift": "let b = 3"               // clean — sibling at depth 0
+        ])
+        let analyzer = Analyzer()
+        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let featureA = modules.first { $0.name == "FeatureA" }
+        let sub1     = modules.first { $0.name == "Sub1" }
+
+        // FeatureA's own score = 0 (no direct files); aggregateScore includes Sub1 findings
+        #expect(featureA?.score == 0.0)
+        #expect(featureA?.aggregateScore ?? 0 > 0)
+        #expect((featureA?.aggregateScore ?? 0) >= (sub1?.aggregateScore ?? 0))
+    }
+
+    @Test("Container module aggregateStatus is pendingMigration when any child is pending")
+    func containerAggregateStatusPendingWhenChildPending() throws {
+        let root = try makeTempDir("AggStatus", structure: [
+            "FeatureA/Sub1/Bad.swift": "var globalVar = 0",   // will trigger GlobalMutableStateRule
+            "FeatureA/Sub2/Good.swift": "let clean = 1",
+            "FeatureB/Core.swift": "let b = 3"                // sibling to force multi-module detection
+        ])
+        let analyzer = Analyzer()
+        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let featureA = modules.first { $0.name == "FeatureA" }
+
+        #expect(featureA?.status == .migrated)                 // no own direct findings
+        #expect(featureA?.aggregateStatus == .pendingMigration) // Sub1 has findings
+    }
+
+    @Test("childQualifiedNames lists direct children only")
+    func childQualifiedNamesDirectOnly() throws {
+        let root = try makeTempDir("ChildNames", structure: [
+            "FeatureA/Sub1/S1.swift": "let s1 = 1",
+            "FeatureA/Sub2/S2.swift": "let s2 = 2",
+            "FeatureB/Core.swift": "let b = 3"
+        ])
+        let analyzer = Analyzer()
+        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let featureA = modules.first { $0.name == "FeatureA" }
+
+        #expect(featureA?.childQualifiedNames.sorted() == ["FeatureA/Sub1", "FeatureA/Sub2"])
+    }
+
+    @Test("Leaf module has empty childQualifiedNames")
+    func leafModuleHasNoChildren() throws {
+        let root = try makeTempDir("LeafNoChildren", structure: [
+            "Core/File.swift": "let x = 1",
+            "UI/View.swift": "struct V { }"    // sibling needed to trigger module detection
+        ])
+        let analyzer = Analyzer()
+        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let core = modules.first { $0.name == "Core" }
+        #expect(core?.childQualifiedNames.isEmpty == true)
+    }
+
+    // Helpers
+    private func makeTempDir(_ name: String, structure: [String: String]) throws -> URL {
+        let base = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("AnalyzerAgg_\(name)_\(UUID().uuidString.prefix(8))")
+        try? FileManager.default.removeItem(at: base)
+        for (relativePath, content) in structure {
+            let fileURL = base.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        }
+        return base
+    }
+}

@@ -10,21 +10,27 @@ func makeModuleResult(
     fileCount: Int = 1,
     linesOfCode: Int = 10,
     depth: Int = 0,
-    parentQualifiedName: String? = nil
+    parentQualifiedName: String? = nil,
+    childQualifiedNames: [String] = [],
+    aggregateScore: Double? = nil
 ) -> ModuleResult {
     let score = FindingComplexity.score(for: findings)
     let qualifiedName = parentQualifiedName.map { "\($0)/\(name)" } ?? name
+    let ownAgg = aggregateScore ?? score
     return ModuleResult(
         name: name,
         qualifiedName: qualifiedName,
         path: "/fake/\(qualifiedName)",
         status: score == 0 ? .migrated : .pendingMigration,
+        aggregateStatus: ownAgg == 0 ? .migrated : .pendingMigration,
         score: score,
+        aggregateScore: ownAgg,
         fileCount: fileCount,
         totalLinesOfCode: linesOfCode,
         findings: findings,
         depth: depth,
-        parentQualifiedName: parentQualifiedName
+        parentQualifiedName: parentQualifiedName,
+        childQualifiedNames: childQualifiedNames
     )
 }
 

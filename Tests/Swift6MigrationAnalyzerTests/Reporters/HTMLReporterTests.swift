@@ -163,3 +163,71 @@ struct HTMLReporterTests {
         #expect(output.contains("&amp;"))
     }
 }
+
+
+// MARK: - Hierarchy & aggregate score tests (appended)
+
+extension HTMLReporterTests {
+
+    @Test("Module row uses aggregateStatus badge not own status")
+    func rowUsesAggregateStatus() {
+        // Parent has no findings but child does → aggregateStatus = pendingMigration
+        let child = makeModuleResult(
+            name: "Sub", findings: [makeFinding()],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        // The parent row should display "Pending Migration" badge (from aggregateStatus)
+        #expect(output.contains("Pending Migration"))
+    }
+
+    @Test("Parent detail panel contains sub-modules table when children exist")
+    func parentDetailHasChildrenSummary() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [makeFinding()],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        #expect(output.contains("Sub-modules"))
+    }
+
+    @Test("Parent detail panel does not show 'no findings' when children have findings")
+    func parentDetailDoesNotShowEmptyStateWhenChildrenPending() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [makeFinding()],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: child.score
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        #expect(!output.contains("No migration issues found in this module"))
+    }
+
+    @Test("Module row shows subtree score from aggregateScore")
+    func rowShowsAggregateScore() {
+        let child = makeModuleResult(
+            name: "Sub", findings: [makeFinding(rule: "UncheckedSendableRule")],
+            depth: 1, parentQualifiedName: "Parent"
+        )
+        let parent = makeModuleResult(
+            name: "Parent", findings: [],
+            depth: 0, childQualifiedNames: ["Parent/Sub"],
+            aggregateScore: 1.0   // UncheckedSendable weight = 1.0
+        )
+        let output = reporter.generate(modules: [parent, child], projectName: "P")
+        #expect(output.contains("1.00"))
+    }
+}
