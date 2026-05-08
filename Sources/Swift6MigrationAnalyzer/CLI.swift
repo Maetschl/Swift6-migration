@@ -8,10 +8,14 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         commandName: "swift6-analyzer",
         abstract: "Analyze Swift 5 codebases for Swift 6 migration issues.",
         discussion: """
-        Automatically detects modules and analyzes each for Swift 6 concurrency migration issues.
-        Each module receives a migration status (Migrated / Pending Migration) and a score:
+        Automatically detects modules recursively and analyzes each for Swift 6 concurrency
+        migration issues. Each module receives a migration status (Migrated / Pending Migration)
+        and a score:
           Score = SUM(finding × complexity weight)
         A score of 0.0 means the module is fully migrated.
+
+        Modules are detected up to --max-depth levels deep (default: 4).
+        Each file is owned exclusively by the deepest module it belongs to.
 
         Default rules cover strict concurrency patterns (global mutable state,
         actor isolation, DispatchQueue, ObservableObject, NotificationCenter, etc.).
@@ -31,6 +35,9 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
     @Option(name: .long, help: "Output file path. If omitted, prints to stdout.")
     var output: String?
 
+    @Option(name: .long, help: "Maximum module nesting depth to scan (default: 4, minimum: 1).")
+    var maxDepth: Int = 4
+
     @Flag(name: .long, help: "Also include code-quality rules (ForceUnwrap, ForceTry) — not Swift 6 specific.")
     var includeQualityRules: Bool = false
 
@@ -44,6 +51,7 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             throw ExitCode.failure
         }
 
+        let resolvedDepth = max(1, maxDepth)
         let additionalExclusions = exclude
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -58,15 +66,15 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         let projectName: String
 
         if isDirectory.boolValue {
-            fputs("🔍 Detecting modules in \(targetURL.path)...\n", stderr)
-            modules = analyzer.analyzeModules(in: targetURL, fileScanner: fileScanner)
+            fputs("🔍 Detecting modules in \(targetURL.path) (max depth: \(resolvedDepth))...\n", stderr)
+            modules = analyzer.analyzeModules(in: targetURL, fileScanner: fileScanner, maxDepth: resolvedDepth)
             projectName = targetURL.lastPathComponent
         } else {
             modules = [analyzer.analyzeAsModule(file: targetURL)]
             projectName = targetURL.deletingPathExtension().lastPathComponent
         }
 
-        // Print module summary to stderr
+        // Print module summary to stderr (indented by depth)
         let totalFiles    = modules.reduce(0) { $0 + $1.fileCount }
         let totalFindings = modules.reduce(0) { $0 + $1.findings.count }
         let projectScore  = modules.reduce(0.0) { $0 + $1.score }
@@ -76,10 +84,12 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         fputs("📦 \(modules.count) module(s) · \(totalFiles) file(s)\n\n", stderr)
 
         for module in modules {
+            let indent = String(repeating: "  ", count: module.depth + 1)
             let scoreStr = String(format: "%.2f", module.score)
             let ind = module.migrationIndicators
             let indicators = "actors:\(ind.actorDeclarationCount) @MainActor:\(ind.mainActorAnnotationCount) async:\(ind.asyncFunctionCount)"
-            fputs("  \(module.status.icon) \(module.name.padding(toLength: 30, withPad: " ", startingAt: 0)) score:\(scoreStr)  findings:\(module.findings.count)  [\(indicators)]\n", stderr)
+            let nameDisplay = module.qualifiedName.padding(toLength: max(30, module.qualifiedName.count + 2), withPad: " ", startingAt: 0)
+            fputs("\(indent)\(module.status.icon) \(nameDisplay) score:\(scoreStr)  findings:\(module.findings.count)  [\(indicators)]\n", stderr)
         }
 
         fputs("\n", stderr)

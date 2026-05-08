@@ -10,6 +10,7 @@ public struct MarkdownReporter: Reporter {
         let allFindings = modules.flatMap { $0.findings }
         let projectScore = modules.reduce(0.0) { $0 + $1.score }
         let projectStatus: MigrationStatus = projectScore == 0 ? .migrated : .pendingMigration
+        let maxDepth = modules.map(\.depth).max() ?? 0
 
         lines.append("# Swift 6 Migration Report — \(projectName)")
         lines.append("")
@@ -24,16 +25,17 @@ public struct MarkdownReporter: Reporter {
         lines.append("| **Status** | \(projectStatus.icon) \(projectStatus.rawValue) |")
         lines.append("| **Migration Score** | `\(String(format: "%.2f", projectScore))` |")
         lines.append("| **Modules** | \(modules.count) |")
+        lines.append("| **Max Scan Depth** | \(maxDepth) |")
         lines.append("| **Total Findings** | \(allFindings.count) |")
         lines.append("| **Total Files** | \(modules.reduce(0) { $0 + $1.fileCount }) |")
         lines.append("| **Total Lines of Code** | \(modules.reduce(0) { $0 + $1.totalLinesOfCode }) |")
         lines.append("")
 
         // Positive indicators summary
-        let totalActors     = modules.reduce(0) { $0 + $1.migrationIndicators.actorDeclarationCount }
-        let totalMainActor  = modules.reduce(0) { $0 + $1.migrationIndicators.mainActorAnnotationCount }
-        let totalAsync      = modules.reduce(0) { $0 + $1.migrationIndicators.asyncFunctionCount }
-        let totalSendable   = modules.reduce(0) { $0 + $1.migrationIndicators.sendableConformanceCount }
+        let totalActors    = modules.reduce(0) { $0 + $1.migrationIndicators.actorDeclarationCount }
+        let totalMainActor = modules.reduce(0) { $0 + $1.migrationIndicators.mainActorAnnotationCount }
+        let totalAsync     = modules.reduce(0) { $0 + $1.migrationIndicators.asyncFunctionCount }
+        let totalSendable  = modules.reduce(0) { $0 + $1.migrationIndicators.sendableConformanceCount }
 
         if totalActors + totalMainActor + totalAsync + totalSendable > 0 {
             lines.append("## ✅ Migration Progress Indicators")
@@ -47,14 +49,15 @@ public struct MarkdownReporter: Reporter {
             lines.append("")
         }
 
-        // Module status table
+        // Module table — depth-indented qualified name
         lines.append("## Modules")
         lines.append("")
-        lines.append("| Module | Status | Score | Files | Lines | Findings | Actors | async |")
-        lines.append("|--------|--------|-------|-------|-------|----------|--------|-------|")
+        lines.append("| Module | Status | Score | Files | Lines | Findings |")
+        lines.append("|--------|--------|-------|-------|-------|----------|")
         for module in modules {
-            let ind = module.migrationIndicators
-            lines.append("| \(module.name) | \(module.status.icon) \(module.status.rawValue) | `\(String(format: "%.2f", module.score))` | \(module.fileCount) | \(module.totalLinesOfCode) | \(module.findings.count) | \(ind.actorDeclarationCount) | \(ind.asyncFunctionCount) |")
+            let indent = String(repeating: "· ", count: module.depth)
+            let nameDisplay = indent + "`\(module.qualifiedName)`"
+            lines.append("| \(nameDisplay) | \(module.status.icon) \(module.status.rawValue) | `\(String(format: "%.2f", module.score))` | \(module.fileCount) | \(module.totalLinesOfCode) | \(module.findings.count) |")
         }
         lines.append("")
 
@@ -65,9 +68,10 @@ public struct MarkdownReporter: Reporter {
             return lines.joined(separator: "\n")
         }
 
-        // Per-module findings
+        // Per-module findings — header depth reflects nesting level
         for module in modules where !module.findings.isEmpty {
-            lines.append("## \(module.status.icon) \(module.name)")
+            let headerPrefix = String(repeating: "#", count: min(2 + module.depth, 5))
+            lines.append("\(headerPrefix) \(module.status.icon) \(module.qualifiedName)")
             lines.append("")
             lines.append("**Score:** `\(String(format: "%.2f", module.score))` · **Files:** \(module.fileCount) · **Lines:** \(module.totalLinesOfCode)")
             lines.append("")

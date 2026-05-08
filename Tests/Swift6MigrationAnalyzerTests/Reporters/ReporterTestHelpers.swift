@@ -8,17 +8,23 @@ func makeModuleResult(
     name: String,
     findings: [Finding],
     fileCount: Int = 1,
-    linesOfCode: Int = 10
+    linesOfCode: Int = 10,
+    depth: Int = 0,
+    parentQualifiedName: String? = nil
 ) -> ModuleResult {
     let score = FindingComplexity.score(for: findings)
+    let qualifiedName = parentQualifiedName.map { "\($0)/\(name)" } ?? name
     return ModuleResult(
         name: name,
-        path: "/fake/\(name)",
+        qualifiedName: qualifiedName,
+        path: "/fake/\(qualifiedName)",
         status: score == 0 ? .migrated : .pendingMigration,
         score: score,
         fileCount: fileCount,
         totalLinesOfCode: linesOfCode,
-        findings: findings
+        findings: findings,
+        depth: depth,
+        parentQualifiedName: parentQualifiedName
     )
 }
 
