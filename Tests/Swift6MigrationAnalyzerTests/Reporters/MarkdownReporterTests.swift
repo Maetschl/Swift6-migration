@@ -24,7 +24,7 @@ struct MarkdownReporterTests {
 
     @Test("Report shows Pending Migration status when findings exist")
     func showsPendingWhenFindingsExist() {
-        let modules = [makeModuleResult(name: "Bad", findings: [makeFinding()])]
+        let modules = [makeModuleResult(name: "Bad", findings: [makeFinding(severity: .error)])]
         let output = reporter.generate(modules: modules, projectName: "P")
         #expect(output.contains("Pending Migration"))
         #expect(output.contains("⏳"))
@@ -32,7 +32,7 @@ struct MarkdownReporterTests {
 
     @Test("Report includes Migration Score")
     func includesMigrationScore() {
-        let finding = makeFinding(rule: "UncheckedSendableRule")
+        let finding = makeFinding(severity: .error, rule: "UncheckedSendableRule")
         let modules = [makeModuleResult(name: "M", findings: [finding])]
         let output = reporter.generate(modules: modules, projectName: "P")
         #expect(output.contains("Score") || output.contains("score"))
@@ -79,7 +79,7 @@ struct MarkdownReporterTests {
     func containerShowsPendingViaAggregate() {
         let child = makeModuleResult(
             name: "Sub",
-            findings: [makeFinding()],
+            findings: [makeFinding(severity: .error)],
             depth: 1,
             parentQualifiedName: "Parent"
         )
@@ -110,7 +110,7 @@ struct MarkdownReporterTests {
     func containerAppearsAsGroupHeaderForChildren() {
         let child = makeModuleResult(
             name: "Sub",
-            findings: [makeFinding()],
+            findings: [makeFinding(severity: .error)],
             depth: 1,
             parentQualifiedName: "Parent"
         )
@@ -159,7 +159,7 @@ struct MarkdownReporterTests {
     @Test("Rule card heading does not conflict with module heading for depth-1 module")
     func ruleCardHeadingStable() {
         // depth-1 module uses ### heading; rule cards should use #### (one level below)
-        let finding = makeFinding(rule: "ForceUnwrapRule")
+        let finding = makeFinding(severity: .error, rule: "ForceUnwrapRule")
         let child = makeModuleResult(
             name: "Sub",
             findings: [finding],

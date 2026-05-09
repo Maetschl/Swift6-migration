@@ -77,7 +77,7 @@ struct AnalyzerTests {
         """)
         let result = analyzer.analyzeAsModule(file: url)
         #expect(!result.findings.isEmpty)
-        #expect(result.status == .pendingMigration)
+        #expect(result.status.isPendingMigration)
         #expect(result.score > 0)
     }
 

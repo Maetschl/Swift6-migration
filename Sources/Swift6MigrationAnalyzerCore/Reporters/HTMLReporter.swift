@@ -6,23 +6,43 @@ public struct HTMLReporter: Reporter {
     // MARK: - Module-aware dashboard
 
     public func generate(modules: [ModuleResult], projectName: String) -> String {
-        let allFindings  = modules.flatMap { $0.findings }
-        let projectScore = modules.filter { $0.depth == 0 }.reduce(0.0) { $0 + $1.aggregateScore }
-        let projectStatus: MigrationStatus = projectScore == 0 ? .migrated : .pendingMigration
+        let allFindings   = modules.flatMap { $0.findings }
+        let projectScore  = modules.filter { $0.depth == 0 }.reduce(0.0) { $0 + $1.aggregateScore }
+        let maxDepthFound = modules.map(\.depth).max() ?? 0
+
+        // Composite project status
+        let hasProjectWarnings = allFindings.contains { $0.severity == .warning || $0.severity == .info }
+        let projectStatus: MigrationStatus = {
+            var tags: Set<MigrationTag> = projectScore == 0 ? [.migrated] : [.pendingMigration]
+            if hasProjectWarnings { tags.insert(.warnings) }
+            return MigrationStatus(tags)
+        }()
+
         let totalErrors   = allFindings.filter { $0.severity == .error }.count
         let totalWarnings = allFindings.filter { $0.severity == .warning }.count
         let totalFiles    = modules.reduce(0) { $0 + $1.fileCount }
         let totalLines    = modules.reduce(0) { $0 + $1.totalLinesOfCode }
-        let maxDepthFound = modules.map(\.depth).max() ?? 0
+
+        // Migrated modules totalizer (includes "Migrated · Warnings")
+        let migratedCount = modules.filter { $0.aggregateStatus.isMigrated }.count
+        let migratedPct   = modules.isEmpty ? 0
+            : Int((Double(migratedCount) / Double(modules.count) * 100).rounded())
+
+        // Score colour gradient — 0 = green, top-20% threshold = red
+        let positiveScores = modules.map { $0.aggregateScore }.filter { $0 > 0 }.sorted()
+        let scoreThreshold: Double = {
+            guard !positiveScores.isEmpty else { return 1 }
+            let idx = max(0, Int((Double(positiveScores.count) * 0.8).rounded(.up)) - 1)
+            return positiveScores[min(idx, positiveScores.count - 1)]
+        }()
 
         let totalActors    = modules.reduce(0) { $0 + $1.migrationIndicators.actorDeclarationCount }
         let totalMainActor = modules.reduce(0) { $0 + $1.migrationIndicators.mainActorAnnotationCount }
         let totalAsync     = modules.reduce(0) { $0 + $1.migrationIndicators.asyncFunctionCount }
         let totalSendable  = modules.reduce(0) { $0 + $1.migrationIndicators.sendableConformanceCount }
 
-        // Module table rows
         let moduleRows = modules.map { module -> String in
-            let scoreColor   = module.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
+            let sc           = scoreGradientColor(module.aggregateScore, threshold: scoreThreshold)
             let ind          = module.migrationIndicators
             let aggrScore    = String(format: "%.2f", module.aggregateScore)
             let ownScoreNote = module.aggregateScore != module.score
@@ -41,8 +61,8 @@ public struct HTMLReporter: Reporter {
             return """
             <tr class="module-row" data-depth="\(module.depth)" data-safe-id="\(safeId)" data-parent-id="\(parentSafeId)" onclick="showModule('\(safeId)')" style="cursor:pointer">
               <td style="padding-left:\(paddingLeft)px">\(depthChevrons)\(toggleBtn)<strong>\(escapeHTML(module.name))</strong></td>
-              <td><span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span></td>
-              <td><span class="score-pill" style="background:\(scoreColor)20;color:\(scoreColor)">\(aggrScore)</span>\(ownScoreNote)</td>
+              <td><div class="status-cell">\(module.aggregateStatus.badgesHTML)</div></td>
+              <td><span class="score-pill" style="background:\(sc)20;color:\(sc)">\(aggrScore)</span>\(ownScoreNote)</td>
               <td>\(module.fileCount)</td>
               <td>\(module.findings.count)</td>
               <td class="indicator">\(ind.actorDeclarationCount)</td>
@@ -52,9 +72,9 @@ public struct HTMLReporter: Reporter {
             """
         }.joined()
 
-        // Module detail sections
         let moduleDetailSections = modules.map { module -> String in
-            let ind = module.migrationIndicators
+            let ind    = module.migrationIndicators
+            let safeId = jsId(module.qualifiedName)
             let indicatorBar = """
             <div class="indicator-bar">
               <span class="ind-chip actor">\(ind.actorDeclarationCount) actors</span>
@@ -67,8 +87,8 @@ public struct HTMLReporter: Reporter {
             if !module.childQualifiedNames.isEmpty {
                 let childRows = module.childQualifiedNames.compactMap { cName -> String? in
                     guard let child = modules.first(where: { $0.qualifiedName == cName }) else { return nil }
-                    let cc = child.aggregateStatus == .migrated ? "#34c759" : "#ff9500"
-                    return "<tr><td><strong>\(escapeHTML(child.name))</strong></td><td><span class='status-badge \(child.aggregateStatus.htmlClass)'>\(child.aggregateStatus.icon) \(escapeHTML(child.aggregateStatus.rawValue))</span></td><td><span class='score-pill' style='background:\(cc)20;color:\(cc)'>\(String(format: "%.2f", child.aggregateScore))</span></td><td>\(child.findings.count)</td></tr>"
+                    let cc = scoreGradientColor(child.aggregateScore, threshold: scoreThreshold)
+                    return "<tr><td><strong>\(escapeHTML(child.name))</strong></td><td><div class='status-cell'>\(child.aggregateStatus.badgesHTML)</div></td><td><span class='score-pill' style='background:\(cc)20;color:\(cc)'>\(String(format: "%.2f", child.aggregateScore))</span></td><td>\(child.findings.count)</td></tr>"
                 }.joined(separator: "\n")
                 childrenSummary = """
                 <h3>Sub-modules</h3>
@@ -80,9 +100,6 @@ public struct HTMLReporter: Reporter {
             } else {
                 childrenSummary = ""
             }
-
-            let safeId = jsId(module.qualifiedName)
-
             if module.findings.isEmpty {
                 let emptyMsg = module.childQualifiedNames.isEmpty
                     ? "<p class=\"empty-state\">&#x2705; No migration issues found in this module.</p>"
@@ -91,17 +108,14 @@ public struct HTMLReporter: Reporter {
                 <div id="module-\(safeId)" class="module-detail" style="display:none">
                   <div class="module-header">
                     <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
-                    <span class="status-badge \(module.aggregateStatus.htmlClass)">\(module.aggregateStatus.icon) \(escapeHTML(module.aggregateStatus.rawValue))</span>
+                    <div class="status-cell">\(module.aggregateStatus.badgesHTML)</div>
                     <span class="score-pill-lg">Subtree Score \(String(format: "%.2f", module.aggregateScore))</span>
                     <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
                   </div>
-                  \(indicatorBar)
-                  \(childrenSummary)
-                  \(emptyMsg)
+                  \(indicatorBar)\(childrenSummary)\(emptyMsg)
                 </div>
                 """
             }
-
             let byRule = Dictionary(grouping: module.findings, by: \.rule)
             let ruleCards = byRule.keys.sorted().map { ruleName -> String in
                 let ruleFindings = byRule[ruleName] ?? []
@@ -120,7 +134,6 @@ public struct HTMLReporter: Reporter {
                 </div>
                 """
             }.joined()
-
             let scoreLabel = module.aggregateScore != module.score
                 ? "Own Score \(String(format: "%.2f", module.score)) &middot; Subtree \(String(format: "%.2f", module.aggregateScore))"
                 : "Score \(String(format: "%.2f", module.score))"
@@ -128,18 +141,15 @@ public struct HTMLReporter: Reporter {
             <div id="module-\(safeId)" class="module-detail" style="display:none">
               <div class="module-header">
                 <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
-                <span class="status-badge \(module.aggregateStatus.htmlClass)">\(escapeHTML(module.aggregateStatus.rawValue))</span>
+                <div class="status-cell">\(module.aggregateStatus.badgesHTML)</div>
                 <span class="score-pill-lg">\(scoreLabel)</span>
                 <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
               </div>
-              \(indicatorBar)
-              \(childrenSummary)
-              \(ruleCards)
+              \(indicatorBar)\(childrenSummary)\(ruleCards)
             </div>
             """
         }.joined()
 
-        // All findings table
         let allRows = allFindings.map { f -> String in
             let fileName = f.file.components(separatedBy: "/").last ?? f.file
             return """
@@ -157,74 +167,29 @@ public struct HTMLReporter: Reporter {
             "<tr><td><code>\(escapeHTML(entry.rule))</code></td><td><strong>\(entry.weight)</strong></td><td>\(escapeHTML(entry.rationale))</td></tr>"
         }.joined()
 
-        let statusColor = projectStatus == .migrated ? "#34c759" : "#ff9500"
-
-        return buildHTML(
-            projectName: projectName,
-            projectStatus: projectStatus,
-            projectScore: projectScore,
-            statusColor: statusColor,
-            modules: modules,
-            totalErrors: totalErrors,
-            totalWarnings: totalWarnings,
-            totalFiles: totalFiles,
-            totalLines: totalLines,
-            totalActors: totalActors,
-            totalMainActor: totalMainActor,
-            totalAsync: totalAsync,
-            totalSendable: totalSendable,
-            maxDepthFound: maxDepthFound,
-            moduleRows: moduleRows,
-            moduleDetailSections: moduleDetailSections,
-            allFindings: allFindings,
-            allRows: allRows,
-            weightRows: weightRows
-        )
-    }
-
-    // swiftlint:disable:next function_parameter_count
-    private func buildHTML(
-        projectName: String,
-        projectStatus: MigrationStatus,
-        projectScore: Double,
-        statusColor: String,
-        modules: [ModuleResult],
-        totalErrors: Int,
-        totalWarnings: Int,
-        totalFiles: Int,
-        totalLines: Int,
-        totalActors: Int,
-        totalMainActor: Int,
-        totalAsync: Int,
-        totalSendable: Int,
-        maxDepthFound: Int,
-        moduleRows: String,
-        moduleDetailSections: String,
-        allFindings: [Finding],
-        allRows: String,
-        weightRows: String
-    ) -> String {
         return """
         <!DOCTYPE html>
         <html lang="en">
         <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Swift 6 Migration \u{2014} \(escapeHTML(projectName))</title>
+        <title>Swift 6 Migration &mdash; \(escapeHTML(projectName))</title>
         <style>
           *{box-sizing:border-box;margin:0;padding:0}
           body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f5f5f7;color:#1d1d1f}
           header{background:#1d1d1f;color:#fff;padding:2rem 2.5rem}
           header h1{font-size:1.8rem}
           header .subtitle{opacity:.65;margin-top:.4rem;font-size:.95rem}
-          .project-status{display:inline-flex;align-items:center;gap:.5rem;margin-top:.75rem;padding:.4rem .9rem;border-radius:999px;font-weight:700;font-size:.9rem;background:\(statusColor)22;color:\(statusColor)}
-          .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1rem;padding:1.5rem 2.5rem}
+          .project-status-bar{display:inline-flex;align-items:center;gap:.4rem;margin-top:.75rem;flex-wrap:wrap}
+          .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1rem;padding:1.5rem 2.5rem}
           .stat{background:#fff;border-radius:14px;padding:1rem 1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.08)}
           .stat .num{font-size:1.8rem;font-weight:700}
           .stat .lbl{color:#6e6e73;font-size:.78rem;margin-top:.2rem}
           .stat.score .num{color:#ff9500}
           .stat.errors .num{color:#ff3b30}
-          .stat.warnings .num{color:#ff9500}
+          .stat.warnings-stat .num{color:#ff9500}
+          .stat.migrated-stat .num{color:#34c759}
+          .stat.migrated-stat .pct{font-size:.95rem;font-weight:500;color:#34c759;margin-left:.2rem}
           .indicators-strip{display:flex;gap:.75rem;padding:0 2.5rem 1.25rem;flex-wrap:wrap}
           .ind-stat{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.5rem .9rem;font-size:.85rem}
           .ind-stat strong{color:#16a34a;font-size:1.1rem;margin-right:.3rem}
@@ -254,9 +219,11 @@ public struct HTMLReporter: Reporter {
           .ind-chip.mainactor{background:#fce7f3;color:#9d174d}
           .ind-chip.async{background:#dcfce7;color:#166534}
           .ind-chip.sendable{background:#f3e8ff;color:#6b21a8}
-          .status-badge{display:inline-block;border-radius:999px;padding:.2rem .7rem;font-size:.8rem;font-weight:600}
+          .status-cell{display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+          .status-badge{display:inline-block;border-radius:999px;padding:.2rem .7rem;font-size:.8rem;font-weight:600;white-space:nowrap}
           .status-badge.migrated{background:#34c75922;color:#34c759}
           .status-badge.pending{background:#ff950022;color:#ff9500}
+          .status-badge.tag-warnings{background:#f5a62322;color:#b45309}
           .score-pill{display:inline-block;border-radius:999px;padding:.15rem .6rem;font-size:.8rem;font-weight:700}
           .score-pill-lg{display:inline-block;border-radius:999px;padding:.3rem .8rem;font-size:.9rem;font-weight:700;background:#ff950022;color:#ff9500}
           .rule-card{background:#fff;border-radius:12px;padding:1rem 1.25rem;margin-bottom:.75rem;box-shadow:0 1px 4px rgba(0,0,0,.08)}
@@ -290,14 +257,15 @@ public struct HTMLReporter: Reporter {
         <header>
           <h1>&#x1F50D; Swift 6 Migration Report</h1>
           <div class="subtitle">\(escapeHTML(projectName)) &middot; Generated \(Date().formatted())</div>
-          <div class="project-status">\(projectStatus.icon) \(projectStatus.rawValue)</div>
+          <div class="project-status-bar">\(projectStatus.badgesHTML)</div>
         </header>
 
         <div class="summary-grid">
           <div class="stat score"><div class="num">\(String(format: "%.2f", projectScore))</div><div class="lbl">Migration Score</div></div>
-          <div class="stat"><div class="num">\(modules.count)</div><div class="lbl">Modules</div></div>
+          <div class="stat migrated-stat"><div class="num">\(migratedCount)<span class="pct">(\(migratedPct)%)</span></div><div class="lbl">Modules Migrated</div></div>
+          <div class="stat"><div class="num">\(modules.count)</div><div class="lbl">Total Modules</div></div>
           <div class="stat errors"><div class="num">\(totalErrors)</div><div class="lbl">Errors</div></div>
-          <div class="stat warnings"><div class="num">\(totalWarnings)</div><div class="lbl">Warnings</div></div>
+          <div class="stat warnings-stat"><div class="num">\(totalWarnings)</div><div class="lbl">Warnings</div></div>
           <div class="stat"><div class="num">\(totalFiles)</div><div class="lbl">Files</div></div>
           <div class="stat"><div class="num">\(totalLines)</div><div class="lbl">Lines of Code</div></div>
         </div>
@@ -315,7 +283,6 @@ public struct HTMLReporter: Reporter {
           <button onclick="showPanel('complexity')">Complexity Table</button>
         </nav>
 
-        <!-- Modules panel -->
         <div id="panel-modules" class="panel active">
           <div class="table-toolbar">
             <span class="toolbar-label">Depth:</span>
@@ -330,14 +297,14 @@ public struct HTMLReporter: Reporter {
           <table id="modules-table">
             <thead>
               <tr>
-                <th onclick="sortTable('modules-table',0)">Module &#x21D5;</th>
-                <th onclick="sortTable('modules-table',1)">Status &#x21D5;</th>
-                <th onclick="sortTable('modules-table',2)">Score &#x21D5;</th>
-                <th onclick="sortTable('modules-table',3)">Files &#x21D5;</th>
-                <th onclick="sortTable('modules-table',4)">Findings &#x21D5;</th>
-                <th onclick="sortTable('modules-table',5)" title="actor declarations">Actors &#x21D5;</th>
-                <th onclick="sortTable('modules-table',6)" title="@MainActor">@Main &#x21D5;</th>
-                <th onclick="sortTable('modules-table',7)" title="async functions">async &#x21D5;</th>
+                <th onclick="sortModulesTable(0)">Module &#x21D5;</th>
+                <th onclick="sortModulesTable(1)">Status &#x21D5;</th>
+                <th onclick="sortModulesTable(2)">Score &#x21D5;</th>
+                <th onclick="sortModulesTable(3)">Files &#x21D5;</th>
+                <th onclick="sortModulesTable(4)">Findings &#x21D5;</th>
+                <th onclick="sortModulesTable(5)" title="actor declarations">Actors &#x21D5;</th>
+                <th onclick="sortModulesTable(6)" title="@MainActor">@Main &#x21D5;</th>
+                <th onclick="sortModulesTable(7)" title="async functions">async &#x21D5;</th>
               </tr>
             </thead>
             <tbody>\(moduleRows)</tbody>
@@ -348,7 +315,6 @@ public struct HTMLReporter: Reporter {
           </div>
         </div>
 
-        <!-- All findings panel -->
         <div id="panel-all-findings" class="panel">
           <h2 class="section-title">All Findings (\(allFindings.count))</h2>
           <table id="findings-table">
@@ -365,7 +331,6 @@ public struct HTMLReporter: Reporter {
           </table>
         </div>
 
-        <!-- Complexity table panel -->
         <div id="panel-complexity" class="panel">
           <h2 class="section-title">Finding Complexity Weight Table</h2>
           <p style="color:#6e6e73;font-size:.9rem;margin-bottom:1rem">Score formula: <strong>SUM(finding &#xD7; complexity weight)</strong>. Higher score = more migration effort required.</p>
@@ -386,7 +351,6 @@ public struct HTMLReporter: Reporter {
           document.getElementById('panel-' + id).classList.add('active');
           event.target.classList.add('active');
         }
-
         function showModule(safeId) {
           document.querySelectorAll('.module-detail').forEach(d => d.style.display = 'none');
           const detail = document.getElementById('module-' + safeId);
@@ -398,14 +362,12 @@ public struct HTMLReporter: Reporter {
             detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
         }
-
         function hideModuleDetails() {
           document.getElementById('module-details').style.display = 'none';
           document.getElementById('modules-table').style.display = 'table';
           document.querySelector('.table-toolbar').style.display = '';
           document.querySelectorAll('.module-detail').forEach(d => d.style.display = 'none');
         }
-
         function changeDepth(delta) {
           currentMaxDepth = Math.max(0, Math.min(maxDepthInData, currentMaxDepth + delta));
           document.getElementById('depth-value').textContent = currentMaxDepth;
@@ -413,20 +375,17 @@ public struct HTMLReporter: Reporter {
           document.getElementById('btn-depth-inc').disabled = currentMaxDepth === maxDepthInData;
           applyFilters();
         }
-
         function toggleCollapse(safeId) {
           if (collapsedSet.has(safeId)) { collapsedSet.delete(safeId); } else { collapsedSet.add(safeId); }
           const btn = document.querySelector('tr[data-safe-id="' + safeId + '"] .toggle-btn');
           if (btn) btn.innerHTML = collapsedSet.has(safeId) ? '&#9654;' : '&#9660;';
           applyFilters();
         }
-
         function expandAll() {
           collapsedSet.clear();
           document.querySelectorAll('.toggle-btn').forEach(b => b.innerHTML = '&#9660;');
           applyFilters();
         }
-
         function collapseAll() {
           document.querySelectorAll('tr.module-row').forEach(row => {
             if (row.querySelector('.toggle-btn')) collapsedSet.add(row.dataset.safeId);
@@ -434,14 +393,12 @@ public struct HTMLReporter: Reporter {
           document.querySelectorAll('.toggle-btn').forEach(b => b.innerHTML = '&#9654;');
           applyFilters();
         }
-
         function isAncestorCollapsed(parentId) {
           if (!parentId) return false;
           if (collapsedSet.has(parentId)) return true;
           const p = document.querySelector('tr[data-safe-id="' + parentId + '"]');
           return p ? isAncestorCollapsed(p.dataset.parentId || '') : false;
         }
-
         function applyFilters() {
           document.querySelectorAll('tr.module-row').forEach(row => {
             const depth  = parseInt(row.dataset.depth);
@@ -449,15 +406,47 @@ public struct HTMLReporter: Reporter {
             row.style.display = hidden ? 'none' : '';
           });
         }
-
+        function sortModulesTable(col) {
+          const table = document.getElementById('modules-table');
+          const tbody = table.tBodies[0];
+          const rows  = Array.from(tbody.rows);
+          const asc   = table.dataset.sortCol == col && table.dataset.sortDir === 'asc';
+          const getValue = r => {
+            const t = r.cells[col].innerText.trim().replace(/^[^A-Za-z0-9.]+/, '');
+            const n = parseFloat(t);
+            return isNaN(n) ? t : n;
+          };
+          const cmp = (a, b) => {
+            const av = getValue(a), bv = getValue(b);
+            if (typeof av === 'number' && typeof bv === 'number') return asc ? bv - av : av - bv;
+            return asc ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+          };
+          const childMap = {};
+          rows.forEach(r => {
+            const p = r.dataset.parentId;
+            if (p) { childMap[p] = childMap[p] || []; childMap[p].push(r); }
+          });
+          const flatten = siblings => {
+            const out = [];
+            siblings.slice().sort(cmp).forEach(r => {
+              out.push(r);
+              flatten(childMap[r.dataset.safeId] || []).forEach(c => out.push(c));
+            });
+            return out;
+          };
+          flatten(rows.filter(r => !r.dataset.parentId)).forEach(r => tbody.appendChild(r));
+          table.dataset.sortCol = col;
+          table.dataset.sortDir = asc ? 'desc' : 'asc';
+          applyFilters();
+        }
         function sortTable(tableId, col) {
           const table = document.getElementById(tableId);
           const tbody = table.tBodies[0];
           const rows  = Array.from(tbody.rows);
           const asc   = table.dataset.sortCol == col && table.dataset.sortDir === 'asc';
           rows.sort((a, b) => {
-            const at = a.cells[col].innerText.trim().replace(/^[^A-Za-z0-9]+/, '');
-            const bt = b.cells[col].innerText.trim().replace(/^[^A-Za-z0-9]+/, '');
+            const at = a.cells[col].innerText.trim();
+            const bt = b.cells[col].innerText.trim();
             const an = parseFloat(at), bn = parseFloat(bt);
             if (!isNaN(an) && !isNaN(bn)) return asc ? bn - an : an - bn;
             return asc ? bt.localeCompare(at) : at.localeCompare(bt);
@@ -466,8 +455,6 @@ public struct HTMLReporter: Reporter {
           table.dataset.sortCol = col;
           table.dataset.sortDir = asc ? 'desc' : 'asc';
         }
-
-        // Init stepper button states
         document.getElementById('btn-depth-dec').disabled = currentMaxDepth === 0;
         document.getElementById('btn-depth-inc').disabled = currentMaxDepth === maxDepthInData;
         </script>
@@ -487,14 +474,33 @@ public struct HTMLReporter: Reporter {
             let rf = byRule[ruleName] ?? []
             ruleCards += "<div><h3>\(escapeHTML(ruleName)) (\(rf.count))</h3><ul>"
             for f in rf {
-                ruleCards += "<li><span>\(f.severity.rawValue)</span> <code>\(escapeHTML(f.location))</code> — \(escapeHTML(f.message))</li>"
+                ruleCards += "<li><span>\(f.severity.rawValue)</span> <code>\(escapeHTML(f.location))</code> &mdash; \(escapeHTML(f.message))</li>"
             }
             ruleCards += "</ul></div>"
         }
-        return "<html><body><h1>Swift 6 Report</h1><p>Errors: \(totalErrors) · Warnings: \(totalWarnings)</p>\(ruleCards)</body></html>"
+        return "<html><body><h1>Swift 6 Report</h1><p>Errors: \(totalErrors) &middot; Warnings: \(totalWarnings)</p>\(ruleCards)</body></html>"
     }
 
     // MARK: - Helpers
+
+    private func scoreGradientColor(_ score: Double, threshold: Double) -> String {
+        guard score > 0     else { return "#34c759" }
+        guard threshold > 0 else { return "#ff9500" }
+        let ratio = min(score / threshold, 1.0)
+        let r: Int, g: Int, b: Int
+        if ratio < 0.5 {
+            let t = ratio / 0.5
+            r = Int((52  + t * (255 - 52 )).rounded())
+            g = Int((199 + t * (204 - 199)).rounded())
+            b = Int((89  + t * (0   - 89 )).rounded())
+        } else {
+            let t = (ratio - 0.5) / 0.5
+            r = 255
+            g = Int((204 + t * (59  - 204)).rounded())
+            b = Int((0   + t * 48         ).rounded())
+        }
+        return String(format: "#%02x%02x%02x", r, g, b)
+    }
 
     private func jsId(_ name: String) -> String {
         name.unicodeScalars.map {
