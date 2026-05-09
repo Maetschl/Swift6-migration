@@ -8,26 +8,26 @@ public struct FindingComplexity: Sendable {
     /// Full complexity weight table keyed by rule name.
     /// Only Swift 6 concurrency migration rules are in the default table.
     public static let weightTable: [(rule: String, weight: Double, rationale: String)] = [
-        // Score 1.0 — Requires deep architectural audit
-        ("UncheckedSendableRule",       1.0, "Bypasses Swift 6 concurrency checks; full thread-safety audit required"),
-        ("NonisolatedUnsafeRule",       0.9, "Property-level concurrency bypass; all access sites must be audited for data races"),
-        ("GlobalMutableStateRule",      0.9, "Non-isolated global mutable state is a compile error in Swift 6; requires actor isolation or redesign"),
-        // Score 0.7–0.8 — Significant refactor
-        ("SynchronizationPrimitiveRule",0.8, "Manual lock-based synchronization must be replaced with actors for Swift 6 safety"),
-        ("ThreadRule",                  0.7, "Direct Thread API bypasses actor isolation; must be replaced with actors or structured concurrency"),
-        ("DispatchQueueRule",           0.7, "Requires adopting @MainActor, structured concurrency, or Swift actor patterns"),
-        ("OperationQueueMainRule",      0.7, "OperationQueue.main usage must be replaced with @MainActor isolation"),
-        // Score 0.5–0.6 — Medium refactor
-        ("CombineRule",                 0.6, "Combine threading model does not integrate with Swift 6 actor isolation; migrate to async sequences"),
-        ("DispatchGroupRule",           0.6, "DispatchGroup must be replaced with async let or withTaskGroup for structured concurrency"),
-        ("TaskDetachedRule",            0.6, "Actor isolation must be carefully analyzed when using Task.detached"),
-        ("MainActorMissingRule",        0.6, "UIKit/AppKit subclass must explicitly declare @MainActor isolation"),
-        ("TimerRule",                   0.5, "Callback-based Timer must be replaced with Task.sleep or AsyncStream-based timer"),
-        ("ObservableObjectRule",        0.5, "Migrate ObservableObject + @Published to the @Observable macro"),
-        ("CompletionHandlerRule",       0.5, "Full async/await refactor of the call-site and all callers required"),
-        // Score 0.3–0.4 — Lower effort
-        ("PreconcurrencyRule",          0.4, "@preconcurrency suppresses Swift 6 warnings; each annotation must be audited and removed"),
-        ("NotificationCenterRule",      0.4, "Notification observer closures need explicit actor isolation context"),
+        // Score 0.9–1.0 — Deep architectural audit required (all .error)
+        ("UncheckedSendableRule",        1.0, "Bypasses Swift 6 Sendable checking entirely; full thread-safety audit required"),
+        ("NonisolatedUnsafeRule",        0.9, "Property-level concurrency bypass; all access sites must be audited for data races"),
+        ("GlobalMutableStateRule",       0.9, "Non-isolated global mutable state is a Swift 6 compile error; requires actor isolation or redesign"),
+        // Score 0.7–0.8 — Significant refactor required (all .error)
+        ("SynchronizationPrimitiveRule", 0.8, "Manual lock-based synchronization violates Swift 6 actor isolation — compile error; replace with actor or Mutex<T>"),
+        ("ThreadRule",                   0.7, "Direct Thread API creates untracked threads outside actor isolation — Swift 6 compile error; replace with actor or Task"),
+        ("DispatchQueueRule",            0.7, "DispatchQueue.async/.sync captures self across actor boundaries — Swift 6 compile error; adopt @MainActor or Task"),
+        ("OperationQueueMainRule",       0.7, "OperationQueue.main must be replaced with @MainActor isolation"),
+        // Score 0.5–0.6 — Medium refactor required (all .error)
+        ("CombineRule",                  0.6, ".sink/.assign capture self across actor boundaries — Swift 6 compile error; migrate to async sequences"),
+        ("DispatchGroupRule",            0.6, "DispatchGroup callbacks execute on untracked threads — Swift 6 compile error; use async let or withTaskGroup"),
+        ("TaskDetachedRule",             0.6, "Task.detached drops actor context, sending non-Sendable values — Swift 6 compile error; use Task { }"),
+        ("MainActorMissingRule",         0.6, "UIKit/AppKit subclass should explicitly declare @MainActor isolation (warning — not a compile error)"),
+        ("TimerRule",                    0.5, "Callback-based Timer fires on RunLoop thread outside actor isolation (warning — recommendation)"),
+        ("ObservableObjectRule",         0.5, "Migrate ObservableObject + @Published to the @Observable macro (warning — recommendation)"),
+        ("CompletionHandlerRule",        0.5, "Full async/await refactor of the call-site and all callers required (warning — recommendation)"),
+        // Score 0.3–0.4 — Lower effort (all .warning)
+        ("PreconcurrencyRule",           0.4, "@preconcurrency suppresses Swift 6 warnings; each annotation must be audited and removed"),
+        ("NotificationCenterRule",       0.4, "Notification observer closures need explicit actor isolation context"),
     ]
 
     /// Complexity weights for optional legacy code-quality rules (not Swift 6 specific).

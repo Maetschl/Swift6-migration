@@ -2,7 +2,12 @@ import SwiftSyntax
 
 /// Detects usage of manual synchronization primitives (NSLock, NSRecursiveLock,
 /// DispatchSemaphore, NSCondition, pthread_mutex_t, os_unfair_lock).
-/// These indicate hand-rolled thread safety that should be migrated to actors in Swift 6.
+///
+/// These are **Swift 6 compile errors** under strict concurrency: hand-rolled lock-based
+/// synchronization does not satisfy the compiler's actor isolation model. Any stored property
+/// using these types requires an explicit isolation guarantee — an actor, `Sendable`
+/// value-type, or `Mutex<T>` from the Synchronization framework (Swift 5.10+).
+///
 /// - SeeAlso: [SynchronizationPrimitiveRule documentation](../../../../Docs/Rules/SynchronizationPrimitiveRule.md)
 public struct SynchronizationPrimitiveRule: Rule {
     public var name: String { "SynchronizationPrimitiveRule" }
@@ -58,9 +63,9 @@ public struct SynchronizationPrimitiveRule: Rule {
             let (line, col) = SourceLocationHelper.location(of: node, converter: converter)
             findings.append(Finding(
                 file: file, line: line, column: col,
-                severity: .warning,
+                severity: .error,
                 rule: "SynchronizationPrimitiveRule",
-                message: "'\(primitiveName)' is a manual synchronization primitive; consider migrating to an actor for Swift 6 data isolation"
+                message: "'\(primitiveName)' is a manual synchronization primitive that causes data races under Swift 6 strict concurrency — a compile error; migrate to a Swift actor or use 'Mutex<T>' from the Synchronization framework"
             ))
         }
     }

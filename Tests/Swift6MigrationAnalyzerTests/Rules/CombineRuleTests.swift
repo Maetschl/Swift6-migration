@@ -8,7 +8,9 @@ struct CombineRuleTests {
 
     let rule = CombineRule()
 
-    @Test("Detects .sink closure")
+    // MARK: - Detection (.error — Swift 6 compile errors)
+
+    @Test("Detects .sink closure as .error")
     func detectsSink() {
         let source = """
         publisher
@@ -18,17 +20,21 @@ struct CombineRuleTests {
         let result = findings(from: rule, source: source)
         #expect(result.count >= 1)
         #expect(result.contains { $0.rule == "CombineRule" && $0.message.contains("sink") })
+        #expect(result.contains { $0.severity == .error })
     }
 
-    @Test("Detects assign(to:on:)")
+    @Test("Detects assign(to:on:) as .error")
     func detectsAssign() {
         let source = "publisher.assign(to: \\.title, on: self)"
         let result = findings(from: rule, source: source)
         #expect(result.count >= 1)
         #expect(result[0].rule == "CombineRule")
+        #expect(result[0].severity == .error)
     }
 
-    @Test("Detects AnyCancellable stored property")
+    // MARK: - Detection (.warning — non-blocking recommendation)
+
+    @Test("Detects AnyCancellable stored property as .warning")
     func detectsAnyCancellable() {
         let source = """
         class ViewModel {
@@ -41,7 +47,7 @@ struct CombineRuleTests {
         #expect(result[0].severity == .warning)
     }
 
-    @Test("Detects Set<AnyCancellable> stored property")
+    @Test("Detects Set<AnyCancellable> stored property as .warning")
     func detectsAnyCancellableSet() {
         let source = """
         class VM {
@@ -50,11 +56,21 @@ struct CombineRuleTests {
         """
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
+        #expect(result[0].severity == .warning)
     }
+
+    // MARK: - Non-detection
 
     @Test("Does not flag plain property unrelated to Combine")
     func ignoresUnrelated() {
         let source = "var name: String = \"\""
+        let result = findings(from: rule, source: source)
+        #expect(result.isEmpty)
+    }
+
+    @Test("Does not flag async sequence usage")
+    func ignoresAsyncSequence() {
+        let source = "for await value in publisher.values { print(value) }"
         let result = findings(from: rule, source: source)
         #expect(result.isEmpty)
     }

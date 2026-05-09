@@ -6,9 +6,9 @@ struct SynchronizationPrimitiveRuleTests {
 
     let rule = SynchronizationPrimitiveRule()
 
-    // MARK: - Detection
+    // MARK: - Detection (.error — Swift 6 compile errors)
 
-    @Test("Detects NSLock via type annotation")
+    @Test("Detects NSLock via type annotation as .error")
     func detectsNSLockTypeAnnotation() {
         let source = """
         class Service {
@@ -18,28 +18,39 @@ struct SynchronizationPrimitiveRuleTests {
         let result = findings(from: rule, source: source)
         #expect(result.count >= 1)
         #expect(result[0].rule == "SynchronizationPrimitiveRule")
-        #expect(result[0].severity == .warning)
+        #expect(result[0].severity == .error)
     }
 
-    @Test("Detects NSLock via initializer expression")
+    @Test("Detects NSLock via initializer expression as .error")
     func detectsNSLockInitializer() {
         let source = "let myLock = NSLock()"
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
+        #expect(result[0].severity == .error)
     }
 
-    @Test("Detects NSRecursiveLock")
+    @Test("Detects NSRecursiveLock as .error")
     func detectsNSRecursiveLock() {
         let source = "let recursiveLock = NSRecursiveLock()"
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
+        #expect(result[0].severity == .error)
     }
 
-    @Test("Detects DispatchSemaphore")
+    @Test("Detects DispatchSemaphore as .error")
     func detectsDispatchSemaphore() {
         let source = "let sem = DispatchSemaphore(value: 1)"
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
+        #expect(result[0].severity == .error)
+    }
+
+    @Test("Detects NSCondition as .error")
+    func detectsNSCondition() {
+        let source = "var cond: NSCondition"
+        let result = findings(from: rule, source: source)
+        #expect(result.count == 1)
+        #expect(result[0].severity == .error)
     }
 
     @Test("Finding message mentions actor migration")
@@ -47,6 +58,13 @@ struct SynchronizationPrimitiveRuleTests {
         let source = "let lock = NSLock()"
         let result = findings(from: rule, source: source)
         #expect(result[0].message.contains("actor"))
+    }
+
+    @Test("Finding message mentions compile error")
+    func messageMentionsCompileError() {
+        let source = "let lock = NSLock()"
+        let result = findings(from: rule, source: source)
+        #expect(result[0].message.lowercased().contains("compile error") || result[0].message.lowercased().contains("data race"))
     }
 
     // MARK: - Non-detection
@@ -57,6 +75,13 @@ struct SynchronizationPrimitiveRuleTests {
         let queue = OperationQueue()
         let name = "Hello"
         """
+        let result = findings(from: rule, source: source)
+        #expect(result.isEmpty)
+    }
+
+    @Test("Does not flag actor declaration")
+    func ignoresActor() {
+        let source = "actor DataStore { var items: [String] = [] }"
         let result = findings(from: rule, source: source)
         #expect(result.isEmpty)
     }

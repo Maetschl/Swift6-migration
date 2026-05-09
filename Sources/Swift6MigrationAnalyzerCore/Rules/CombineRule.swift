@@ -2,9 +2,17 @@ import SwiftSyntax
 
 /// Detects Combine framework usage that conflicts with Swift 6 actor isolation.
 ///
-/// - `.sink { }` closures may execute on arbitrary scheduler threads
-/// - `assign(to:on:)` sends values to `self` across a potential concurrency boundary
-/// - `AnyCancellable` storage in a non-isolated context indicates Combine dependency
+/// Patterns are split by severity:
+///
+/// **`.error` — Swift 6 compile errors:**
+/// - `.sink { }` — the closure executes on an arbitrary scheduler thread; capturing
+///   actor-isolated `self` produces "sending value of type X risks causing data races".
+/// - `assign(to:on:)` — sends values to `self` across an actor isolation boundary,
+///   producing the same data-race compile error.
+///
+/// **`.warning` — non-blocking recommendation:**
+/// - `AnyCancellable` storage — the storage itself is fine; it signals active Combine
+///   subscriptions that should eventually migrate to async sequences.
 ///
 /// Preferred Swift 6 alternatives: `.values` async sequence with `for await`,
 /// `AsyncStream`, or `assign(to:)` with `@Observable`.
@@ -37,16 +45,16 @@ public struct CombineRule: Rule {
             if text.hasSuffix(".sink") {
                 findings.append(Finding(
                     file: file, line: line, column: col,
-                    severity: .warning,
+                    severity: .error,
                     rule: "CombineRule",
-                    message: "Combine .sink closure may execute on an arbitrary thread, violating actor isolation; consider migrating to '.values' async sequence with 'for await' or an AsyncStream"
+                    message: "Combine .sink closure executes on an arbitrary scheduler thread, sending self across an actor isolation boundary — a Swift 6 compile error; migrate to '.values' async sequence with 'for await' or an AsyncStream"
                 ))
             } else if text.hasSuffix(".assign") || text.contains("assign(to:on:)") {
                 findings.append(Finding(
                     file: file, line: line, column: col,
-                    severity: .warning,
+                    severity: .error,
                     rule: "CombineRule",
-                    message: "Combine assign(to:on:) sends values to 'self' across a potential concurrency boundary; prefer 'assign(to:)' on an '@Observable' type or use an async sequence"
+                    message: "Combine assign(to:on:) sends values to 'self' across an actor isolation boundary — a Swift 6 compile error; use 'assign(to:)' on an '@Observable' type or migrate to an async sequence"
                 ))
             }
 

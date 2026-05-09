@@ -2,10 +2,13 @@ import SwiftSyntax
 
 /// Detects `DispatchGroup` usage.
 ///
-/// `DispatchGroup` is a thread-level synchronization mechanism that coordinates
-/// work across arbitrary threads, bypassing Swift 6 actor isolation.
-/// In Swift 6, `async let` and `withTaskGroup` / `withThrowingTaskGroup` provide
-/// structured concurrency equivalents with guaranteed actor isolation.
+/// `DispatchGroup` is a **Swift 6 compile error** under strict concurrency: callbacks passed
+/// to `notify(queue:execute:)` and `enter()`/`leave()` pairs execute on untracked threads
+/// that cannot be reasoned about by the actor isolation model. Sending `self` into these
+/// callbacks produces "data races" compile errors.
+///
+/// In Swift 6, `async let` and `withTaskGroup` / `withThrowingTaskGroup` provide structured
+/// concurrency equivalents with guaranteed actor isolation.
 /// - SeeAlso: [DispatchGroupRule documentation](../../../../Docs/Rules/DispatchGroupRule.md)
 public struct DispatchGroupRule: Rule {
     public var name: String { "DispatchGroupRule" }
@@ -63,9 +66,9 @@ public struct DispatchGroupRule: Rule {
             reportedLines.insert(line)
             findings.append(Finding(
                 file: file, line: line, column: col,
-                severity: .warning,
+                severity: .error,
                 rule: "DispatchGroupRule",
-                message: "DispatchGroup is a thread-level synchronization primitive that bypasses actor isolation; replace with 'async let' or 'withTaskGroup' for structured concurrency in Swift 6"
+                message: "DispatchGroup callbacks execute on untracked threads, violating Swift 6 actor isolation boundaries — a compile error; replace with 'async let' or 'withTaskGroup' for structured concurrency"
             ))
         }
     }

@@ -1,9 +1,18 @@
 import SwiftSyntax
 
-/// Detects DispatchQueue usage that should be migrated to Swift 6 structured concurrency.
+/// Detects DispatchQueue usage that violates Swift 6 strict concurrency.
 ///
-/// - `.main.async` / `.main.asyncAfter` / `global().async` → warning: prefer @MainActor or structured concurrency
-/// - `.main.sync` / `.sync` → error: blocks the calling thread and bypasses actor isolation
+/// All patterns produce **Swift 6 compilation errors** under strict concurrency mode:
+/// - `.async` / `.asyncAfter` — the closure captures `self` across an actor isolation
+///   boundary, causing "sending value of type X risks causing data races" compile errors.
+/// - `.sync` — blocks the calling thread and bypasses actor isolation.
+/// - `DispatchQueue(label:)` manual creation — unstructured thread management that the
+///   compiler cannot reason about under Swift 6's isolation model.
+///
+/// Preferred Swift 6 replacements:
+/// - `DispatchQueue.main.async { }` → `@MainActor` isolation or `await MainActor.run { }`
+/// - `DispatchQueue.global().async { }` → `Task { }` or structured concurrency
+/// - `.sync` → `await` on an actor method
 /// - SeeAlso: [DispatchQueueRule documentation](../../../../Docs/Rules/DispatchQueueRule.md)
 public struct DispatchQueueRule: Rule {
     public var name: String { "DispatchQueueRule" }
@@ -34,7 +43,6 @@ public struct DispatchQueueRule: Rule {
             let (line, col) = SourceLocationHelper.location(of: node, converter: converter)
 
             if text.contains(".sync") {
-                // .sync blocks the calling thread — error level in Swift 6 context
                 findings.append(Finding(
                     file: file, line: line, column: col,
                     severity: .error,
@@ -42,24 +50,22 @@ public struct DispatchQueueRule: Rule {
                     message: "DispatchQueue.sync blocks the calling thread and bypasses actor isolation; replace with await on an actor method or async function"
                 ))
             } else if text.contains(".async") {
-                // .async is a warning — should move to @MainActor or Task { }
                 let isMain = text.contains(".main")
                 let suggestion = isMain
-                    ? "Replace DispatchQueue.main.async with @MainActor isolated code or 'await MainActor.run { }'"
-                    : "Replace DispatchQueue.global().async with a Swift concurrency Task or structured concurrency"
+                    ? "DispatchQueue.main.async captures 'self' across the MainActor boundary — a Swift 6 compile error; replace with '@MainActor' isolation or 'await MainActor.run { }'"
+                    : "DispatchQueue.global().async sends a closure across an actor isolation boundary — a Swift 6 compile error; replace with 'Task { }' or structured concurrency"
                 findings.append(Finding(
                     file: file, line: line, column: col,
-                    severity: .warning,
+                    severity: .error,
                     rule: "DispatchQueueRule",
                     message: suggestion
                 ))
             } else if text.hasSuffix("DispatchQueue") || text.contains("DispatchQueue(label:") || text.contains("DispatchQueue(") {
-                // Manual DispatchQueue creation
                 findings.append(Finding(
                     file: file, line: line, column: col,
-                    severity: .warning,
+                    severity: .error,
                     rule: "DispatchQueueRule",
-                    message: "Manual DispatchQueue creation indicates custom thread management; consider migrating to a Swift actor for data isolation"
+                    message: "Manual DispatchQueue creation bypasses Swift 6 actor isolation; migrate to a Swift actor or structured concurrency to satisfy strict concurrency checking"
                 ))
             }
 
