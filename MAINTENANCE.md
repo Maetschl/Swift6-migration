@@ -119,15 +119,20 @@ After adding tests, run `swift test`. The final count must be strictly higher th
 
 Open every file in `Sources/Swift6MigrationAnalyzerCore/Rules/`. For each rule verify:
 
-- **`.error` severity** is used only for patterns that cause actual Swift 6 **compilation errors**
-  (e.g. `GlobalMutableStateRule`, `UncheckedSendableRule`, `NonisolatedUnsafeRule`,
-  `DispatchQueue.main.async` on UI paths).
+- **`.error` severity** is used only for patterns that cause actual Swift 6 **compilation errors**:
+  `GlobalMutableStateRule`, `NonisolatedUnsafeRule`, `UncheckedSendableRule`,
+  `DispatchQueueRule` (all patterns: `.async`, `.sync`, manual creation),
+  `ThreadRule` (`Thread.detachNewThread` / `Thread(block:)` only),
+  `SynchronizationPrimitiveRule`, `DispatchGroupRule`, `TaskDetachedRule`,
+  `CombineRule` (`.sink` and `assign(to:on:)` — `AnyCancellable` stays `.warning`).
 - **`.warning` severity** is used for patterns that are **recommendations** but do not block
-  compilation (e.g. `CompletionHandlerRule`, `ObservableObjectRule`, `PreconcurrencyRule`,
-  `TimerRule`).
+  compilation: `CompletionHandlerRule`, `ObservableObjectRule`, `PreconcurrencyRule`,
+  `TimerRule`, `NotificationCenterRule`, `OperationQueueMainRule`, `MainActorMissingRule`,
+  `CombineRule` (AnyCancellable only), `ThreadRule` (`isMainThread`/`main`/`current` only).
 - Each finding message is **actionable**: it states the problem and hints at the fix.
 
-Consult `FindingComplexity.weightTable` — rules with weight ≥ 0.7 should almost always be `.error`.
+Consult `FindingComplexity.weightTable` — the rationale string for each rule explicitly
+states whether it is a compile error or a recommendation.
 
 ### 3.2 Review score computation
 

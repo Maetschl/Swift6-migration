@@ -8,13 +8,13 @@ struct DispatchGroupRuleTests {
 
     let rule = DispatchGroupRule()
 
-    @Test("Detects DispatchGroup() initializer in variable")
+    @Test("Detects DispatchGroup() initializer as .error")
     func detectsDispatchGroupInit() {
         let source = "let group = DispatchGroup()"
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
         #expect(result[0].rule == "DispatchGroupRule")
-        #expect(result[0].severity == .warning)
+        #expect(result[0].severity == .error)
     }
 
     @Test("Detects DispatchGroup via type annotation")

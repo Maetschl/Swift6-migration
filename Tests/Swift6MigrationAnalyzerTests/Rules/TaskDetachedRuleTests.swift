@@ -8,7 +8,7 @@ struct TaskDetachedRuleTests {
 
     // MARK: - Detection
 
-    @Test("Detects Task.detached")
+    @Test("Detects Task.detached as .error")
     func detectsTaskDetached() {
         let source = """
         Task.detached {
@@ -18,7 +18,7 @@ struct TaskDetachedRuleTests {
         let result = findings(from: rule, source: source)
         #expect(result.count == 1)
         #expect(result[0].rule == "TaskDetachedRule")
-        #expect(result[0].severity == .warning)
+        #expect(result[0].severity == .error)
     }
 
     @Test("Detects Task.detached with priority")

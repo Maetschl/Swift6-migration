@@ -2,12 +2,18 @@ import SwiftSyntax
 
 /// Detects direct use of the `Thread` class for concurrency control.
 ///
-/// `Thread` is a low-level Objective-C-era API that operates below Swift 6's
-/// actor isolation model. Common problematic patterns:
-/// - `Thread.detachNewThread { }` / `Thread(block:)` — creates untracked threads
-/// - `Thread.isMainThread` / `Thread.main` — thread-level checks that don't compose
-///   with actor isolation; a function can be @MainActor-isolated yet called from a
-///   background Thread, giving a false-positive `isMainThread` check.
+/// `Thread` is a low-level Objective-C-era API that operates below Swift 6's actor isolation
+/// model. Patterns are split by severity:
+///
+/// **`.error` — Swift 6 compile errors:**
+/// - `Thread.detachNewThread { }` / `Thread(block:)` — creates an untracked thread outside
+///   actor isolation; sending `self` into the closure is a "data races" compile error.
+///
+/// **`.warning` — runtime checks that don't compose with actor isolation:**
+/// - `Thread.isMainThread` / `Thread.main` / `Thread.current` — thread-level checks that
+///   give false results inside `@MainActor`-isolated code called from a background thread.
+///   Not a compile error, but a correctness hazard.
+///
 /// - SeeAlso: [ThreadRule documentation](../../../../Docs/Rules/ThreadRule.md)
 public struct ThreadRule: Rule {
     public var name: String { "ThreadRule" }
@@ -37,9 +43,9 @@ public struct ThreadRule: Rule {
             let (line, col) = SourceLocationHelper.location(of: node, converter: converter)
             findings.append(Finding(
                 file: file, line: line, column: col,
-                severity: .warning,
+                severity: .error,
                 rule: "ThreadRule",
-                message: "Direct Thread API usage bypasses Swift 6 actor isolation; replace with a Swift actor, '@MainActor', or structured concurrency Tasks"
+                message: "Direct Thread API usage creates an untracked thread outside actor isolation — a Swift 6 compile error; replace with a Swift actor, '@MainActor', or structured concurrency Tasks"
             ))
             return .visitChildren
         }
