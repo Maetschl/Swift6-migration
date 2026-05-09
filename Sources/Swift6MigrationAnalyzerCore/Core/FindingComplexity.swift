@@ -1,4 +1,4 @@
-/// Wae y elComplexity weight table for each rule.
+/// Complexity weight table and scoring utilities for Swift 6 migration findings.
 /// Weight ranges from 0.1 (trivial fix) to 1.0 (deep architectural change).
 /// Migration score for a set of findings = SUM(finding × complexity weight).
 public struct FindingComplexity: Sendable {
@@ -41,6 +41,8 @@ public struct FindingComplexity: Sendable {
 
     // MARK: - Lookup
 
+    /// Returns the complexity weight for a given rule name.
+    /// Falls back to `legacyWeightTable`, then `defaultWeight` if the rule is not found.
     public static func weight(for rule: String) -> Double {
         weightTable.first { $0.rule == rule }?.weight
             ?? legacyWeightTable.first { $0.rule == rule }?.weight
@@ -50,14 +52,21 @@ public struct FindingComplexity: Sendable {
     // MARK: - Score Calculation
     // Score = SUM(finding × complexity weight)
 
+    /// Computes the total migration score for all findings regardless of severity.
+    /// - Note: Prefer `errorScore(for:)` in all production scoring paths — this method
+    ///   is preserved for internal use and testing.
     public static func score(for findings: [Finding]) -> Double {
         findings.reduce(0.0) { accumulated, finding in
             accumulated + weight(for: finding.rule)
         }
     }
 
-    /// Score counting only `.error`-severity findings.
-    /// Warnings and infos contribute 0 to the migration score.
+    /// Computes the migration score counting **only `.error`-severity findings**.
+    ///
+    /// `.warning` and `.info` findings are non-blocking recommendations; they do not
+    /// contribute to the score and never cause a module to be labelled "Pending Migration".
+    /// This is the sole production scoring path — `score(for:)` is not called directly
+    /// from any reporter or analyzer.
     public static func errorScore(for findings: [Finding]) -> Double {
         score(for: findings.filter { $0.severity == .error })
     }
