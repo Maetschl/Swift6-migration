@@ -1,9 +1,15 @@
 // MARK: - Tag
 
 /// An individual migration classification tag.
+///
+/// Tags are combined into a `MigrationStatus` set. A module may carry more than
+/// one tag simultaneously (e.g. `.migrated` + `.warnings`).
 public enum MigrationTag: String, Codable, Sendable, CaseIterable {
+    /// The module has no Swift 6 compilation errors and no warnings.
     case migrated         = "Migrated"
+    /// The module has at least one Swift 6 **compilation error** that blocks migration.
     case pendingMigration = "Pending Migration"
+    /// The module has at least one `.warning`/`.info` finding (non-blocking recommendations).
     case warnings         = "Warnings"
 
     var sortOrder: Int {
@@ -24,23 +30,35 @@ public enum MigrationTag: String, Codable, Sendable, CaseIterable {
 /// - `[.migrated, .warnings]`           — Only non-mandatory warnings / recommendations.
 /// - `[.pendingMigration]`              — Has Swift 6 compilation errors; no warnings.
 /// - `[.pendingMigration, .warnings]`   — Has both errors and warnings.
+///
+/// The score used to determine `.pendingMigration` vs `.migrated` is derived **exclusively**
+/// from `.error`-severity findings via `FindingComplexity.errorScore(for:)`.
+/// `.warning` and `.info` findings never contribute to the score and never block migration status.
 public struct MigrationStatus: Codable, Sendable, Equatable, Hashable {
 
+    /// The set of active classification tags for this module.
     public let tags: Set<MigrationTag>
 
+    /// Creates a `MigrationStatus` from an explicit set of tags.
     public init(_ tags: Set<MigrationTag>) {
         self.tags = tags
     }
 
     // MARK: - Static convenience factories
 
+    /// Convenience status representing a fully migrated module with no issues.
     public static let migrated         = MigrationStatus([.migrated])
+    /// Convenience status representing a module with unresolved Swift 6 compilation errors.
     public static let pendingMigration = MigrationStatus([.pendingMigration])
 
     // MARK: - Query helpers
 
+    /// `true` when the module has at least one Swift 6 compilation error.
     public var isPendingMigration: Bool { tags.contains(.pendingMigration) }
+    /// `true` when the module has **no** Swift 6 compilation errors (score == 0).
+    /// Note: a migrated module may still carry the `.warnings` tag.
     public var isMigrated: Bool         { !isPendingMigration }
+    /// `true` when the module has at least one `.warning` or `.info` finding.
     public var hasWarnings: Bool        { tags.contains(.warnings) }
 
     // MARK: - Display
@@ -50,6 +68,8 @@ public struct MigrationStatus: Codable, Sendable, Equatable, Hashable {
         tags.sorted { $0.sortOrder < $1.sortOrder }.map(\.rawValue).joined(separator: " · ")
     }
 
+    /// The emoji icon representing the dominant status.
+    /// - `⏳` for pending migration, `⚠️` for migrated-with-warnings, `✅` for fully migrated.
     public var icon: String {
         if isPendingMigration { return "⏳" }
         if hasWarnings        { return "⚠️" }

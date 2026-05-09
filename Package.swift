@@ -1,11 +1,11 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 
 import PackageDescription
 
 let package = Package(
     name: "Swift6MigrationAnalyzer",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v15)
     ],
     dependencies: [
         .package(
@@ -14,7 +14,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/apple/swift-argument-parser.git",
-            from: "1.3.0"
+            from: "1.5.0"
         )
     ],
     targets: [
