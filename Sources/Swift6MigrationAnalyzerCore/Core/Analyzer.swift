@@ -55,12 +55,13 @@ public struct Analyzer: Sendable {
             let findings    = analyze(files: module.sourceFiles)
             let linesOfCode = countLines(in: module.sourceFiles)
             let indicators  = collectIndicators(in: module.sourceFiles)
-            let score       = FindingComplexity.score(for: findings)
+            let score       = FindingComplexity.errorScore(for: findings)
+            let ownStatus   = buildStatus(score: score, findings: findings)
             return ModuleResult(
                 name: module.name,
                 qualifiedName: module.qualifiedName,
                 path: module.rootURL.path,
-                status: score == 0 ? .migrated : .pendingMigration,
+                status: ownStatus,
                 aggregateStatus: .migrated,          // placeholder — filled below
                 score: score,
                 aggregateScore: score,               // placeholder — filled below
@@ -85,9 +86,9 @@ public struct Analyzer: Sendable {
         let findings    = analyze(file: file)
         let linesOfCode = countLines(in: [file])
         let indicators  = collectIndicators(in: [file])
-        let score       = FindingComplexity.score(for: findings)
+        let score       = FindingComplexity.errorScore(for: findings)
         let name        = file.deletingPathExtension().lastPathComponent
-        let status: MigrationStatus = score == 0 ? .migrated : .pendingMigration
+        let status      = buildStatus(score: score, findings: findings)
         return ModuleResult(
             name: name,
             qualifiedName: name,
@@ -130,7 +131,11 @@ public struct Analyzer: Sendable {
             let children = childMap[module.qualifiedName] ?? []
             let childrenAggScore = children.compactMap { byName[$0]?.aggregateScore }.reduce(0, +)
             let aggScore = module.score + childrenAggScore
-            let aggStatus: MigrationStatus = aggScore > 0 ? .pendingMigration : .migrated
+            let childrenHaveWarnings = children.compactMap { byName[$0]?.aggregateStatus.hasWarnings }.contains(true)
+            let aggHasWarnings = module.status.hasWarnings || childrenHaveWarnings
+            var aggTags: Set<MigrationTag> = aggScore > 0 ? [.pendingMigration] : [.migrated]
+            if aggHasWarnings { aggTags.insert(.warnings) }
+            let aggStatus = MigrationStatus(aggTags)
 
             byName[module.qualifiedName] = ModuleResult(
                 name: module.name,
@@ -152,6 +157,14 @@ public struct Analyzer: Sendable {
 
         // Return in original depth-first order
         return modules.compactMap { byName[$0.qualifiedName] }
+    }
+
+
+    private func buildStatus(score: Double, findings: [Finding]) -> MigrationStatus {
+        let hasWarnings = findings.contains { $0.severity == .warning || $0.severity == .info }
+        var tags: Set<MigrationTag> = score == 0 ? [.migrated] : [.pendingMigration]
+        if hasWarnings { tags.insert(.warnings) }
+        return MigrationStatus(tags)
     }
 
     // MARK: - Flat analysis

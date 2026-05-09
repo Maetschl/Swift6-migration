@@ -40,7 +40,7 @@ struct JSONReporterTests {
 
     @Test("JSON status is Pending Migration when findings exist")
     func statusIsPendingWhenFindingsExist() {
-        let modules = [makeModuleResult(name: "M", findings: [makeFinding()])]
+        let modules = [makeModuleResult(name: "M", findings: [makeFinding(severity: .error)])]
         let output = reporter.generate(modules: modules, projectName: "P")
         #expect(output.contains("Pending Migration"))
     }

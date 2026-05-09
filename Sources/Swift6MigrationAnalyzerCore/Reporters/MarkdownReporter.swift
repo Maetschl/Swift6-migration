@@ -9,7 +9,15 @@ public struct MarkdownReporter: Reporter {
         var lines: [String] = []
         let allFindings  = modules.flatMap { $0.findings }
         let projectScore = modules.filter { $0.depth == 0 }.reduce(0.0) { $0 + $1.aggregateScore }
-        let projectStatus: MigrationStatus = projectScore == 0 ? .migrated : .pendingMigration
+        let hasProjectWarnings = allFindings.contains { $0.severity == .warning || $0.severity == .info }
+        let projectStatus: MigrationStatus = {
+            var tags: Set<MigrationTag> = projectScore == 0 ? [.migrated] : [.pendingMigration]
+            if hasProjectWarnings { tags.insert(.warnings) }
+            return MigrationStatus(tags)
+        }()
+        let migratedCount = modules.filter { $0.aggregateStatus.isMigrated }.count
+        let migratedPct   = modules.isEmpty ? 0
+            : Int((Double(migratedCount) / Double(modules.count) * 100).rounded())
         let maxDepthFound = modules.map(\.depth).max() ?? 0
 
         lines.append("# Swift 6 Migration Report — \(projectName)")
@@ -22,8 +30,10 @@ public struct MarkdownReporter: Reporter {
         lines.append("")
         lines.append("| | |")
         lines.append("|---|---|")
-        lines.append("| **Status** | \(projectStatus.icon) \(projectStatus.rawValue) |")
+        lines.append("| **Status** | \(projectStatus.badgesMarkdown) |")
         lines.append("| **Subtree Score** | `\(String(format: "%.2f", projectScore))` |")
+        lines.append("| **Modules Migrated** | \(migratedCount) / \(modules.count) (\(migratedPct)%) |")
+        lines.append("| **Modules Migrated** | \(migratedCount) / \(modules.count) (\(migratedPct)%) |")
         lines.append("| **Modules** | \(modules.count) |")
         lines.append("| **Max Scan Depth** | \(maxDepthFound) |")
         lines.append("| **Total Findings** | \(allFindings.count) |")
@@ -62,7 +72,7 @@ public struct MarkdownReporter: Reporter {
             let nameCell   = "\(depthPrefix)`\(module.name)`"
             let ownScore   = String(format: "%.2f", module.score)
             let aggrScore  = String(format: "%.2f", module.aggregateScore)
-            let statusCell = "\(module.aggregateStatus.icon) \(module.aggregateStatus.rawValue)"
+            let statusCell = module.aggregateStatus.badgesMarkdown
             lines.append("| \(nameCell) | \(module.depth) | \(statusCell) | `\(ownScore)` | `\(aggrScore)` | \(module.fileCount) | \(module.totalLinesOfCode) | \(module.findings.count) |")
         }
         lines.append("")

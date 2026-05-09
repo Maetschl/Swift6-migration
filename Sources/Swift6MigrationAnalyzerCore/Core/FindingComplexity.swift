@@ -1,4 +1,4 @@
-/// Complexity weight table for each rule.
+/// Wae y elComplexity weight table for each rule.
 /// Weight ranges from 0.1 (trivial fix) to 1.0 (deep architectural change).
 /// Migration score for a set of findings = SUM(finding × complexity weight).
 public struct FindingComplexity: Sendable {
@@ -55,4 +55,11 @@ public struct FindingComplexity: Sendable {
             accumulated + weight(for: finding.rule)
         }
     }
+
+    /// Score counting only `.error`-severity findings.
+    /// Warnings and infos contribute 0 to the migration score.
+    public static func errorScore(for findings: [Finding]) -> Double {
+        score(for: findings.filter { $0.severity == .error })
+    }
+
 }

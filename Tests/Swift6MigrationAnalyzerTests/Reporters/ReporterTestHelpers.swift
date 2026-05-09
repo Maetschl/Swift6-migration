@@ -14,15 +14,21 @@ func makeModuleResult(
     childQualifiedNames: [String] = [],
     aggregateScore: Double? = nil
 ) -> ModuleResult {
-    let score = FindingComplexity.score(for: findings)
+    let score = FindingComplexity.errorScore(for: findings)
+    let hasWarnings = findings.contains { $0.severity == .warning || $0.severity == .info }
     let qualifiedName = parentQualifiedName.map { "\($0)/\(name)" } ?? name
     let ownAgg = aggregateScore ?? score
+    func makeStatus(s: Double, warn: Bool) -> MigrationStatus {
+        var tags: Set<MigrationTag> = s == 0 ? [.migrated] : [.pendingMigration]
+        if warn { tags.insert(.warnings) }
+        return MigrationStatus(tags)
+    }
     return ModuleResult(
         name: name,
         qualifiedName: qualifiedName,
         path: "/fake/\(qualifiedName)",
-        status: score == 0 ? .migrated : .pendingMigration,
-        aggregateStatus: ownAgg == 0 ? .migrated : .pendingMigration,
+        status: makeStatus(s: score, warn: hasWarnings),
+        aggregateStatus: makeStatus(s: ownAgg, warn: hasWarnings),
         score: score,
         aggregateScore: ownAgg,
         fileCount: fileCount,

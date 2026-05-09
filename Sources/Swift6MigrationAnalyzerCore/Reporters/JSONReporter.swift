@@ -18,6 +18,8 @@ public struct JSONReporter: Reporter {
             let generatedAt: String
             let status: MigrationStatus
             let totalScore: Double
+            let migratedModules: Int
+            let migratedPercent: Int
             let totalFindings: Int
             let totalFiles: Int
             let totalLinesOfCode: Int
@@ -34,7 +36,16 @@ public struct JSONReporter: Reporter {
 
         let allFindings = modules.flatMap { $0.findings }
         let projectScore = modules.reduce(0.0) { $0 + $1.score }
-        let projectStatus: MigrationStatus = projectScore == 0 ? .migrated : .pendingMigration
+        let hasProjectWarnings = allFindings.contains { $0.severity == .warning || $0.severity == .info }
+        let projectStatus: MigrationStatus = {
+            var tags: Set<MigrationTag> = projectScore == 0 ? [.migrated] : [.pendingMigration]
+            if hasProjectWarnings { tags.insert(.warnings) }
+            return MigrationStatus(tags)
+        }()
+
+        let migratedCount = modules.filter { $0.aggregateStatus.isMigrated }.count
+        let migratedPct   = modules.isEmpty ? 0
+            : Int((Double(migratedCount) / Double(modules.count) * 100).rounded())
 
         let byRule = Dictionary(grouping: allFindings, by: \.rule)
         let ruleSummaries = byRule.keys.sorted().map { ruleName -> RuleSummary in
@@ -57,6 +68,8 @@ public struct JSONReporter: Reporter {
             generatedAt: ISO8601DateFormatter().string(from: Date()),
             status: projectStatus,
             totalScore: projectScore,
+            migratedModules: migratedCount,
+            migratedPercent: migratedPct,
             totalFindings: allFindings.count,
             totalFiles: modules.reduce(0) { $0 + $1.fileCount },
             totalLinesOfCode: modules.reduce(0) { $0 + $1.totalLinesOfCode },
