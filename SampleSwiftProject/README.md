@@ -29,18 +29,18 @@ From the `Swift6-migration` repo root:
 
 ```bash
 # HTML report
-.build/release/Swift6MigrationAnalyzer LegacyApp \
+.build/release/Swift6MigrationAnalyzer SampleSwiftProject \
   --report html \
-  --output /tmp/legacyapp-report.html
+  --output /tmp/sample-report.html
 
-open /tmp/legacyapp-report.html
+open /tmp/sample-report.html
 ```
 
 ```bash
 # JSON report for programmatic processing
-.build/release/Swift6MigrationAnalyzer LegacyApp \
+.build/release/Swift6MigrationAnalyzer SampleSwiftProject \
   --report json \
-  --output /tmp/legacyapp-report.json
+  --output /tmp/sample-report.json
 ```
 
 ## What this demo exercises
