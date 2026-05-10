@@ -17,9 +17,8 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         Modules are detected up to --max-depth levels deep (default: 4).
         Each file is owned exclusively by the deepest module it belongs to.
 
-        Default rules cover strict concurrency patterns (global mutable state,
+        All 16 built-in rules cover strict concurrency patterns (global mutable state,
         actor isolation, DispatchQueue, ObservableObject, NotificationCenter, etc.).
-        Use --include-quality-rules to also flag force-unwrap and force-try.
         """
     )
 
@@ -37,9 +36,6 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
 
     @Option(name: .long, help: "Maximum module nesting depth to scan (default: 4, minimum: 1).")
     var maxDepth: Int = 4
-
-    @Flag(name: .long, help: "Also include code-quality rules (ForceUnwrap, ForceTry) — not Swift 6 specific.")
-    var includeQualityRules: Bool = false
 
     @Option(name: .long, help: "Path to the Docs/Rules/ directory for assistant mode rule documentation. Defaults to <project>/Docs/Rules/.")
     var docsPath: String?
@@ -61,8 +57,7 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             .filter { !$0.isEmpty }
 
         let fileScanner = FileScanner(additionalExclusions: additionalExclusions)
-        let rules: [any Rule] = includeQualityRules ? Analyzer.allRules : Analyzer.defaultRules
-        let analyzer = Analyzer(rules: rules)
+        let analyzer = Analyzer()
 
         // Collect module results
         let modules: [ModuleResult]
@@ -98,9 +93,6 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         fputs("\n", stderr)
         fputs("📊 Total findings: \(totalFindings)  |  Project score: \(String(format: "%.2f", projectScore))\n", stderr)
         fputs("   ✅ Migrated: \(migratedCount)  ⏳ Pending: \(pendingCount)\n", stderr)
-        if includeQualityRules {
-            fputs("   ℹ️  Code-quality rules enabled (--include-quality-rules)\n", stderr)
-        }
         fputs("\n", stderr)
 
         // Generate report

@@ -78,15 +78,6 @@ swift6-analyzer /path/to/TargetProject \
   --output swift6-report.md
 ```
 
-### Include optional code-quality checks (force-unwrap, force-try)
-
-```bash
-swift6-analyzer /path/to/TargetProject \
-  --include-quality-rules \
-  --report json \
-  --output swift6-report.json
-```
-
 ### Exclude directories you don't own
 
 ```bash
@@ -195,7 +186,6 @@ Use the findings to guide code changes. The table below maps each rule to the co
 | `UncheckedSendableRule` | 🔴 error | 1.0 | `@unchecked Sendable` | Audit thread safety of every mutable property; replace with a proper `actor` or add `nonisolated(unsafe)` only if proven safe |
 | `GlobalMutableStateRule` | 🔴 error | 0.9 | `var` at global/file scope | Add `@MainActor` to the variable, wrap it inside an `actor`, or convert it to a `let` constant |
 | `SynchronizationPrimitiveRule` | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, `NSRecursiveLock` | Replace with an `actor` that owns the protected state |
-| `ForceTryRule` *(quality)* | 🔴 error | 0.8 | `try!` | Replace with `do { try … } catch { … }` or `try?` |
 | `DispatchQueueRule` | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async {}` → warning; `DispatchQueue.*.sync {}` → error | Replace with `Task { @MainActor in … }` or annotate enclosing type with `@MainActor` |
 | `OperationQueueMainRule` | ⚠️ warning | 0.7 | `OperationQueue.main.addOperation {}` | Replace with `Task { @MainActor in … }` |
 | `TaskDetachedRule` | ⚠️ warning | 0.6 | `Task.detached { }` | Prefer `Task { }` (inherits actor context); only use `Task.detached` if explicit isolation escape is intentional |
@@ -245,6 +235,7 @@ Or for Xcode projects: set **Swift Language Version** to **Swift 6** in Build Se
 ## CLI Reference (Quick Summary)
 
 ```
+USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>
 USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>] [--include-quality-rules]
 
 ARGUMENTS:
@@ -254,7 +245,6 @@ OPTIONS:
   --exclude <dirs>          Comma-separated directory names to skip (added on top of built-in exclusions)
   --report <format>         markdown | json | html  (default: markdown)
   --output <file>           Write report to file instead of stdout
-  --include-quality-rules   Also run ForceUnwrap + ForceTry rules (not Swift 6 specific)
 
 BUILT-IN EXCLUDED DIRECTORIES (always skipped):
   Pods, Carthage, DerivedData, build, .build, .git, Tests, SnapshotTests

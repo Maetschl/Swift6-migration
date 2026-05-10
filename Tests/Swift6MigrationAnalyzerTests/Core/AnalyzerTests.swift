@@ -32,25 +32,6 @@ struct AnalyzerTests {
         }
     }
 
-    @Test("Quality rules are NOT in defaultRules")
-    func qualityRulesNotInDefaults() {
-        let names = Analyzer.defaultRules.map(\.name)
-        #expect(!names.contains("ForceUnwrapRule"))
-        #expect(!names.contains("ForceTryRule"))
-    }
-
-    @Test("Quality rules are available via qualityRules")
-    func qualityRulesAvailable() {
-        let names = Analyzer.qualityRules.map(\.name)
-        #expect(names.contains("ForceUnwrapRule"))
-        #expect(names.contains("ForceTryRule"))
-    }
-
-    @Test("allRules combines default and quality rules")
-    func allRulesCombinesBoth() {
-        #expect(Analyzer.allRules.count == Analyzer.defaultRules.count + Analyzer.qualityRules.count)
-    }
-
     // MARK: - File-level analysis
 
     @Test("Returns no findings for clean Swift 6 code")
@@ -165,11 +146,11 @@ struct AnalyzerTests {
 
     @Test("Analyzer respects custom rule set")
     func customRuleSet() throws {
-        let url = try writeTemp(name: "Custom.swift", content: "let x = optional!")
-        // Only ForceUnwrap — ForceTry should not produce findings
-        let customAnalyzer = Analyzer(rules: [ForceUnwrapRule()])
+        let url = try writeTemp(name: "Custom.swift", content: "var globalCounter = 0")
+        // Only GlobalMutableStateRule — DispatchQueueRule should not produce findings
+        let customAnalyzer = Analyzer(rules: [GlobalMutableStateRule()])
         let result = customAnalyzer.analyzeAsModule(file: url)
-        #expect(result.findings.allSatisfy { $0.rule == "ForceUnwrapRule" })
+        #expect(result.findings.allSatisfy { $0.rule == "GlobalMutableStateRule" })
     }
 
     // MARK: - Helpers

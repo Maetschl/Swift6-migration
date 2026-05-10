@@ -122,13 +122,13 @@ struct HTMLReporterTests {
 
     @Test("All findings table shows complexity weight column")
     func findingsTableShowsWeight() {
-        let finding = makeFinding(rule: "ForceUnwrapRule")
+        let finding = makeFinding(rule: "NotificationCenterRule")
         let modules = [makeModuleResult(name: "M", findings: [finding])]
         let output = reporter.generate(modules: modules, projectName: "P")
         // Weight column header
         #expect(output.contains("Weight"))
-        // ForceUnwrapRule weight = 0.3
-        #expect(output.contains("0.3"))
+        // NotificationCenterRule weight = 0.4
+        #expect(output.contains("0.4"))
     }
 
     // MARK: - JavaScript

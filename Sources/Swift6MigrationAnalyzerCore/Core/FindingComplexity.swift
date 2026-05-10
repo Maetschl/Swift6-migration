@@ -30,23 +30,15 @@ public struct FindingComplexity: Sendable {
         ("NotificationCenterRule",       0.4, "Notification observer closures need explicit actor isolation context"),
     ]
 
-    /// Complexity weights for optional legacy code-quality rules (not Swift 6 specific).
-    public static let legacyWeightTable: [(rule: String, weight: Double, rationale: String)] = [
-        ("ForceTryRule",   0.8, "Error handling must be restructured with try/catch or try?"),
-        ("ForceUnwrapRule",0.3, "Straightforward replacement with optional binding"),
-    ]
-
     /// Default weight for unknown rules.
     public static let defaultWeight: Double = 0.5
 
     // MARK: - Lookup
 
     /// Returns the complexity weight for a given rule name.
-    /// Falls back to `legacyWeightTable`, then `defaultWeight` if the rule is not found.
+    /// Falls back to `defaultWeight` if the rule is not in the weight table.
     public static func weight(for rule: String) -> Double {
-        weightTable.first { $0.rule == rule }?.weight
-            ?? legacyWeightTable.first { $0.rule == rule }?.weight
-            ?? defaultWeight
+        weightTable.first { $0.rule == rule }?.weight ?? defaultWeight
     }
 
     // MARK: - Score Calculation

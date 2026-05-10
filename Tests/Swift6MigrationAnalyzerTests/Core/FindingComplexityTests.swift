@@ -98,18 +98,4 @@ struct FindingComplexityTests {
         #expect(FindingComplexity.score(for: [high]) > FindingComplexity.score(for: [low]))
     }
 
-    // MARK: - Legacy table
-
-    @Test("Legacy table contains ForceUnwrap and ForceTry")
-    func legacyTableContainsQualityRules() {
-        let names = FindingComplexity.legacyWeightTable.map(\.rule)
-        #expect(names.contains("ForceUnwrapRule"))
-        #expect(names.contains("ForceTryRule"))
-    }
-
-    @Test("weight(for:) falls back to legacy table for legacy rules")
-    func weightFallsBackToLegacy() {
-        #expect(FindingComplexity.weight(for: "ForceUnwrapRule") == 0.3)
-        #expect(FindingComplexity.weight(for: "ForceTryRule") == 0.8)
-    }
 }

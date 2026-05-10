@@ -32,12 +32,6 @@ public struct Analyzer: Sendable {
         ]
     }
 
-    public static var qualityRules: [any Rule] {
-        [ForceUnwrapRule(), ForceTryRule()]
-    }
-
-    public static var allRules: [any Rule] { defaultRules + qualityRules }
-
     // MARK: - Module-aware analysis
 
     /// Detects modules recursively up to `maxDepth`, analyzes each, and returns

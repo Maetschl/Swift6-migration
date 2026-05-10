@@ -28,10 +28,9 @@ LegacyApp/
 From the `Swift6-migration` repo root:
 
 ```bash
-# HTML report (all rules including quality)
+# HTML report
 .build/release/Swift6MigrationAnalyzer LegacyApp \
   --report html \
-  --include-quality-rules \
   --output /tmp/legacyapp-report.html
 
 open /tmp/legacyapp-report.html
@@ -41,7 +40,6 @@ open /tmp/legacyapp-report.html
 # JSON report for programmatic processing
 .build/release/Swift6MigrationAnalyzer LegacyApp \
   --report json \
-  --include-quality-rules \
   --output /tmp/legacyapp-report.json
 ```
 
@@ -54,5 +52,4 @@ open /tmp/legacyapp-report.html
 | Depth scanning (levels 1 → 3) | workspace → package → target |
 | Migrated modules (score 0.0) | `AppShell/*`, `SharedKit/*` |
 | Pending modules with varied scores | `CoreFeatures/*`, `Infrastructure/*` |
-| All 18 built-in rules | Distributed across modules |
-| Quality rules (opt-in) | `Persistence` (ForceTry, ForceUnwrap) |
+| All 16 built-in rules | Distributed across modules |

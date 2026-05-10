@@ -1,7 +1,8 @@
 # Swift 6 Migration Analyzer
 
 A command-line tool to analyze Swift 5 codebases and detect patterns that need attention when migrating to Swift 6. Built with SwiftSyntax for accurate, syntax-based analysis.
-<img width="1323" height="1014" alt="Screenshot 2026-05-09 at 14 00 32" src="https://github.com/user-attachments/assets/32dfb5c6-b241-4872-bd4a-94afe9c46629" />
+
+<img width="1162" height="992" alt="Screenshot 2026-05-09 at 01 00 53" src="https://github.com/user-attachments/assets/0ca318e8-6809-4ba7-9b11-73ff7ce4937a" />
 
 ---
 
@@ -9,6 +10,7 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 - 🔍 Recursively scans Swift projects for migration issues
 - 📦 Automatically detects modules and scores each one independently
+- 📋 16 built-in Swift 6 concurrency
 - 📋 16 built-in Swift 6 concurrency rules + 2 optional code-quality rules
 - 📊 3 report formats: Markdown, JSON, HTML dashboard
 - ⚙️ Configurable exclusions for directories you don't own
@@ -53,7 +55,7 @@ swift6-analyzer <path> [options]
 |--------|-------------|---------|
 | `--report <format>` | Report format: `markdown`, `json`, or `html` | `markdown` |
 | `--output <file>` | Write the report to a file instead of stdout | stdout |
-| `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_ |
+| `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_
 | `--include-quality-rules` | Also enable code-quality rules (`ForceUnwrap`, `ForceTry`) | disabled |
 
 ---
@@ -96,14 +98,7 @@ swift6-analyzer <path> [options]
 .build/release/swift6-analyzer /path/to/MyApp \
   --exclude Mocks,Stubs,Generated \
   --report html \
-  --output report.html
-```
-
-### Include optional code-quality rules
-
-```bash
-.build/release/swift6-analyzer /path/to/MyApp \
-  --include-quality-rules \
+  --output report.html-rules \
   --report markdown
 ```
 
@@ -159,12 +154,6 @@ Use `--exclude` to add more on top of these defaults.
 | [📖 `PreconcurrencyRule`](Docs/Rules/PreconcurrencyRule.md) | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances |
 | [📖 `NotificationCenterRule`](Docs/Rules/NotificationCenterRule.md) | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` |
 
-### Code-Quality Rules (opt-in via `--include-quality-rules`)
-
-| Rule | Severity | Weight | Detects |
-|------|----------|--------|---------|
-| [📖 `ForceTryRule`](Docs/Rules/ForceTryRule.md) | 🔴 error | 0.8 | `try!` |
-| [📖 `ForceUnwrapRule`](Docs/Rules/ForceUnwrapRule.md) | ⚠️ warning | 0.3 | `value!` |
 
 ---
 
@@ -195,13 +184,7 @@ Each rule has a dedicated documentation page with:
 | [ObservableObjectRule](Docs/Rules/ObservableObjectRule.md) | `ObservableObject` + `@Published` instead of `@Observable` |
 | [CompletionHandlerRule](Docs/Rules/CompletionHandlerRule.md) | `@escaping` completion handlers ready for `async/await` |
 | [PreconcurrencyRule](Docs/Rules/PreconcurrencyRule.md) | `@preconcurrency` suppressing real Swift 6 errors |
-| [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries |
-
-### Code Quality (opt-in)
-
-| Rule | Summary |
-|------|---------|
-| [ForceTryRule](Docs/Rules/ForceTryRule.md) | `try!` crashing instead of proper error handling |
+| [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries
 | [ForceUnwrapRule](Docs/Rules/ForceUnwrapRule.md) | `value!` crashing instead of optional binding |
 
 ---
@@ -352,9 +335,7 @@ Sources/
     │   ├── ObservableObjectRule.swift
     │   ├── CompletionHandlerRule.swift
     │   ├── PreconcurrencyRule.swift
-    │   ├── NotificationCenterRule.swift
-    │   ├── ForceUnwrapRule.swift          ← quality rule (opt-in)
-    │   └── ForceTryRule.swift             ← quality rule (opt-in)
+    │   └── NotificationCenterRule.swift
     ├── Reporters/
     │   ├── Reporter.swift
     │   ├── MarkdownReporter.swift
