@@ -10,6 +10,26 @@ public struct HTMLReporter: Reporter {
         let projectScore  = modules.filter { $0.depth == 0 }.reduce(0.0) { $0 + $1.aggregateScore }
         let maxDepthFound = modules.map(\.depth).max() ?? 0
 
+        // Common path prefix for trimming absolute paths → project-relative display
+        let rootPath: String = {
+            let paths = modules.map { $0.path }
+            guard !paths.isEmpty else { return "" }
+            var parts = paths[0].components(separatedBy: "/")
+            for p in paths.dropFirst() {
+                let other = p.components(separatedBy: "/")
+                var i = 0
+                while i < parts.count && i < other.count && parts[i] == other[i] { i += 1 }
+                parts = Array(parts.prefix(i))
+            }
+            return parts.joined(separator: "/")
+        }()
+        let trimPath: (String) -> String = { path in
+            guard !rootPath.isEmpty, path.hasPrefix(rootPath) else { return path }
+            var rel = String(path.dropFirst(rootPath.count))
+            if rel.hasPrefix("/") { rel = String(rel.dropFirst()) }
+            return rel.isEmpty ? path : rel
+        }
+
         // Composite project status
         let hasProjectWarnings = allFindings.contains { $0.severity == .warning || $0.severity == .info }
         let projectStatus: MigrationStatus = {
@@ -43,7 +63,7 @@ public struct HTMLReporter: Reporter {
 
         let moduleRows = modules.map { module -> String in
             let sc           = scoreGradientColor(module.aggregateScore, threshold: scoreThreshold)
-            let ind          = module.migrationIndicators
+            let ind          = module.aggregateMigrationIndicators
             let aggrScore    = String(format: "%.2f", module.aggregateScore)
             let ownScoreNote = module.aggregateScore != module.score
                 ? "<small style='color:#888'> (own: \(String(format: "%.2f", module.score)))</small>"
@@ -58,13 +78,16 @@ public struct HTMLReporter: Reporter {
                 ? "<span class='depth-chevron'>\(String(repeating: "›", count: module.depth))</span>"
                 : ""
             let paddingLeft = 8 + module.depth * 20
+            let findingsBadge = module.aggregateFindings > module.findings.count
+                ? "\(module.aggregateFindings)<small style='color:#aaa'> (\(module.findings.count) own)</small>"
+                : "\(module.findings.count)"
             return """
             <tr class="module-row" data-depth="\(module.depth)" data-safe-id="\(safeId)" data-parent-id="\(parentSafeId)" onclick="showModule('\(safeId)')" style="cursor:pointer">
               <td style="padding-left:\(paddingLeft)px">\(depthChevrons)\(toggleBtn)<strong>\(escapeHTML(module.name))</strong></td>
               <td><div class="status-cell">\(module.aggregateStatus.badgesHTML)</div></td>
               <td><span class="score-pill" style="background:\(sc)20;color:\(sc)">\(aggrScore)</span>\(ownScoreNote)</td>
               <td>\(module.fileCount)</td>
-              <td>\(module.findings.count)</td>
+              <td>\(findingsBadge)</td>
               <td class="indicator">\(ind.actorDeclarationCount)</td>
               <td class="indicator">\(ind.mainActorAnnotationCount)</td>
               <td class="indicator">\(ind.asyncFunctionCount)</td>
@@ -120,17 +143,34 @@ public struct HTMLReporter: Reporter {
             let ruleCards = byRule.keys.sorted().map { ruleName -> String in
                 let ruleFindings = byRule[ruleName] ?? []
                 let weight = FindingComplexity.weight(for: ruleName)
+                let errorCount   = ruleFindings.filter { $0.severity == .error }.count
+                let warningCount = ruleFindings.filter { $0.severity == .warning }.count
                 let items = ruleFindings.map { f -> String in
-                    "<li><span class=\"badge \(f.severity.htmlClass)\">\(f.severity.rawValue)</span> <code>\(escapeHTML(f.location))</code> &mdash; \(escapeHTML(f.message))</li>"
+                    let relFile = trimPath(f.file)
+                    let loc = "\(relFile):\(f.line)"
+                    return "<li data-severity=\"\(f.severity.rawValue)\"><span class=\"badge \(f.severity.htmlClass)\">\(f.severity.rawValue)</span> <code>\(escapeHTML(loc))</code> &mdash; \(escapeHTML(f.message))</li>"
                 }.joined(separator: "\n")
+                let wandId = jsId(module.qualifiedName + ruleName)
+                let severityBadges = (errorCount > 0 ? "<span class='badge error'>\(errorCount) error\(errorCount == 1 ? "" : "s")</span> " : "")
+                                   + (warningCount > 0 ? "<span class='badge warning'>\(warningCount) warning\(warningCount == 1 ? "" : "s")</span>" : "")
                 return """
                 <div class="rule-card">
                   <div class="rule-header">
                     <span class="rule-name">\(escapeHTML(ruleName))</span>
                     <span class="weight-pill">weight \(weight)</span>
+                    \(severityBadges)
                     <span class="count">\(ruleFindings.count)</span>
+                    <button class="wand-btn" onclick="toggleWand('\(wandId)')" title="How to fix this rule">&#x1FA84;</button>
                   </div>
-                  <ul>\(items)</ul>
+                  <div id="wand-\(wandId)" class="wand-panel" style="display:none">
+                    <p class="wand-rule-link">&#x1F4C4; <strong>\(escapeHTML(ruleName))</strong> — see full documentation in <code>Docs/Rules/\(escapeHTML(ruleName)).md</code></p>
+                  </div>
+                  <div class="finding-filter-bar">
+                    <button class="filter-btn active" data-filter="all"     onclick="filterFindings(this, '\(wandId)')">All (\(ruleFindings.count))</button>
+                    \(errorCount   > 0 ? "<button class='filter-btn' data-filter='error'   onclick='filterFindings(this, \"\(wandId)\")'>\u{1F534} Errors (\(errorCount))</button>" : "")
+                    \(warningCount > 0 ? "<button class='filter-btn' data-filter='warning' onclick='filterFindings(this, \"\(wandId)\")'>\u{26A0}\u{FE0F} Warnings (\(warningCount))</button>" : "")
+                  </div>
+                  <ul id="findings-\(wandId)">\(items)</ul>
                 </div>
                 """
             }.joined()
@@ -151,10 +191,10 @@ public struct HTMLReporter: Reporter {
         }.joined()
 
         let allRows = allFindings.map { f -> String in
-            let fileName = f.file.components(separatedBy: "/").last ?? f.file
+            let relFile = trimPath(f.file)
             return """
             <tr class="\(f.severity.htmlClass)">
-              <td>\(escapeHTML(fileName)):\(f.line)</td>
+              <td>\(escapeHTML(relFile)):\(f.line)</td>
               <td><span class="badge \(f.severity.htmlClass)">\(f.severity.rawValue.uppercased())</span></td>
               <td>\(escapeHTML(f.rule))</td>
               <td>\(String(format: "%.1f", FindingComplexity.weight(for: f.rule)))</td>
@@ -251,6 +291,14 @@ public struct HTMLReporter: Reporter {
           .empty-state{color:#6e6e73;padding:1.5rem;text-align:center;background:#fff;border-radius:12px}
           .back-btn{background:none;border:none;color:#007aff;font-size:.9rem;cursor:pointer;padding:.4rem 0;margin-bottom:1rem}
           .back-btn:hover{text-decoration:underline}
+          .finding-filter-bar{display:flex;gap:.4rem;margin:.5rem 0 .5rem;flex-wrap:wrap}
+          .filter-btn{background:#f2f2f7;border:1.5px solid #d1d1d6;border-radius:999px;padding:.18rem .65rem;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .15s}
+          .filter-btn.active,.filter-btn:hover{background:#1d1d1f;color:#fff;border-color:#1d1d1f}
+          .wand-btn{background:none;border:none;font-size:1rem;cursor:pointer;padding:0 .2rem;opacity:.5;transition:opacity .15s;vertical-align:middle}
+          .wand-btn:hover{opacity:1}
+          .wand-panel{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:.75rem 1rem;margin-bottom:.5rem;font-size:.85rem}
+          .wand-rule-link{color:#1d4ed8}
+          .wand-panel code{background:#dbeafe;padding:.1rem .3rem;border-radius:4px;font-size:.8rem}
         </style>
         </head>
         <body>
@@ -455,6 +503,21 @@ public struct HTMLReporter: Reporter {
           table.dataset.sortCol = col;
           table.dataset.sortDir = asc ? 'desc' : 'asc';
         }
+        function filterFindings(btn, wandId) {
+          const filter = btn.dataset.filter;
+          const ul = document.getElementById('findings-' + wandId);
+          if (!ul) return;
+          ul.querySelectorAll('li').forEach(li => {
+            const sev = li.dataset.severity;
+            li.style.display = (filter === 'all' || sev === filter) ? '' : 'none';
+          });
+          btn.closest('.finding-filter-bar').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        }
+        function toggleWand(wandId) {
+          const panel = document.getElementById('wand-' + wandId);
+          if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
         document.getElementById('btn-depth-dec').disabled = currentMaxDepth === 0;
         document.getElementById('btn-depth-inc').disabled = currentMaxDepth === maxDepthInData;
         </script>
@@ -482,6 +545,14 @@ public struct HTMLReporter: Reporter {
     }
 
     // MARK: - Helpers
+
+    /// Strips the common project root prefix from an absolute file path for display.
+    private func relPath(_ path: String, root: String) -> String {
+        guard !root.isEmpty, path.hasPrefix(root) else { return path }
+        var rel = String(path.dropFirst(root.count))
+        if rel.hasPrefix("/") { rel = String(rel.dropFirst()) }
+        return rel.isEmpty ? path : rel
+    }
 
     private func scoreGradientColor(_ score: Double, threshold: Double) -> String {
         guard score > 0     else { return "#34c759" }

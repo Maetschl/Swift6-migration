@@ -31,6 +31,17 @@ public struct MigrationIndicators: Codable, Sendable {
         actorDeclarationCount + mainActorAnnotationCount + asyncFunctionCount + sendableConformanceCount
     }
 
+    /// Combines two sets of indicators by summing each field (for aggregating across a module tree).
+    public static func + (lhs: MigrationIndicators, rhs: MigrationIndicators) -> MigrationIndicators {
+        MigrationIndicators(
+            actorDeclarationCount:    lhs.actorDeclarationCount    + rhs.actorDeclarationCount,
+            mainActorAnnotationCount: lhs.mainActorAnnotationCount + rhs.mainActorAnnotationCount,
+            asyncFunctionCount:       lhs.asyncFunctionCount       + rhs.asyncFunctionCount,
+            awaitUsageCount:          lhs.awaitUsageCount          + rhs.awaitUsageCount,
+            sendableConformanceCount: lhs.sendableConformanceCount + rhs.sendableConformanceCount
+        )
+    }
+
     public static var empty: MigrationIndicators {
         MigrationIndicators(
             actorDeclarationCount: 0,

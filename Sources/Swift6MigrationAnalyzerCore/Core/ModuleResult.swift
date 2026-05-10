@@ -27,6 +27,10 @@ public struct ModuleResult: Codable, Sendable {
     public let parentQualifiedName: String?
     /// Qualified names of direct child modules (one level below this module).
     public let childQualifiedNames: [String]
+    /// Total finding count across this module and all descendants.
+    public let aggregateFindings: Int
+    /// Sum of all migration indicators across this module and all descendants.
+    public let aggregateMigrationIndicators: MigrationIndicators
 
     public init(
         name: String,
@@ -42,7 +46,9 @@ public struct ModuleResult: Codable, Sendable {
         migrationIndicators: MigrationIndicators = .empty,
         depth: Int = 0,
         parentQualifiedName: String? = nil,
-        childQualifiedNames: [String] = []
+        childQualifiedNames: [String] = [],
+        aggregateFindings: Int? = nil,
+        aggregateMigrationIndicators: MigrationIndicators? = nil
     ) {
         self.name = name
         self.qualifiedName = qualifiedName
@@ -58,5 +64,7 @@ public struct ModuleResult: Codable, Sendable {
         self.depth = depth
         self.parentQualifiedName = parentQualifiedName
         self.childQualifiedNames = childQualifiedNames
+        self.aggregateFindings = aggregateFindings ?? findings.count
+        self.aggregateMigrationIndicators = aggregateMigrationIndicators ?? migrationIndicators
     }
 }

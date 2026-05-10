@@ -41,6 +41,9 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
     @Flag(name: .long, help: "Also include code-quality rules (ForceUnwrap, ForceTry) — not Swift 6 specific.")
     var includeQualityRules: Bool = false
 
+    @Option(name: .long, help: "Path to the Docs/Rules/ directory for assistant mode rule documentation. Defaults to <project>/Docs/Rules/.")
+    var docsPath: String?
+
     mutating func run() throws {
         let targetURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
         let fm = FileManager.default
@@ -107,6 +110,18 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             reporter = JSONReporter()
         case "html":
             reporter = HTMLReporter()
+        case "assistant":
+            let resolvedDocsURL: URL? = {
+                if let dp = docsPath {
+                    return URL(fileURLWithPath: (dp as NSString).standardizingPath)
+                }
+                // Default: <analyzed-dir>/Docs/Rules/
+                if isDirectory.boolValue {
+                    return targetURL.appendingPathComponent("Docs/Rules")
+                }
+                return nil
+            }()
+            reporter = AssistantReporter(docsPath: resolvedDocsURL)
         default:
             reporter = MarkdownReporter()
         }

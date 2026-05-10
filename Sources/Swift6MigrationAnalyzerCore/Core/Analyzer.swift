@@ -125,12 +125,17 @@ public struct Analyzer: Sendable {
             }
         }
 
-        // Compute aggregateScore bottom-up (process deepest modules first)
+        // Compute aggregates bottom-up (process deepest modules first)
         let sorted = modules.sorted { $0.depth > $1.depth }  // deepest first
         for module in sorted {
             let children = childMap[module.qualifiedName] ?? []
-            let childrenAggScore = children.compactMap { byName[$0]?.aggregateScore }.reduce(0, +)
-            let aggScore = module.score + childrenAggScore
+            let childrenAggScore    = children.compactMap { byName[$0]?.aggregateScore }.reduce(0, +)
+            let childrenAggFindings = children.compactMap { byName[$0]?.aggregateFindings }.reduce(0, +)
+            let childrenAggInd      = children.compactMap { byName[$0]?.aggregateMigrationIndicators }
+                                              .reduce(MigrationIndicators.empty, +)
+            let aggScore    = module.score + childrenAggScore
+            let aggFindings = module.findings.count + childrenAggFindings
+            let aggInd      = module.migrationIndicators + childrenAggInd
             let childrenHaveWarnings = children.compactMap { byName[$0]?.aggregateStatus.hasWarnings }.contains(true)
             let aggHasWarnings = module.status.hasWarnings || childrenHaveWarnings
             var aggTags: Set<MigrationTag> = aggScore > 0 ? [.pendingMigration] : [.migrated]
@@ -151,7 +156,9 @@ public struct Analyzer: Sendable {
                 migrationIndicators: module.migrationIndicators,
                 depth: module.depth,
                 parentQualifiedName: module.parentQualifiedName,
-                childQualifiedNames: children.sorted()
+                childQualifiedNames: children.sorted(),
+                aggregateFindings: aggFindings,
+                aggregateMigrationIndicators: aggInd
             )
         }
 
