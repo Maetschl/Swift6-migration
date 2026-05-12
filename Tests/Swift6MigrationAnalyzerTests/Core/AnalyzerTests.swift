@@ -25,7 +25,7 @@ struct AnalyzerTests {
             "ObservableObjectRule", "SynchronizationPrimitiveRule",
             "MainActorMissingRule", "NotificationCenterRule",
             "OperationQueueMainRule", "TimerRule",
-            "CombineRule", "ThreadRule"
+            "CombineRule", "ThreadRule", "MainActorRunRule"
         ]
         for name in expected {
             #expect(names.contains(name), "Missing rule: \(name)")
