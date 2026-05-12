@@ -9,9 +9,9 @@ struct AnalyzerTests {
 
     // MARK: - Default rules
 
-    @Test("Analyzer has 16 default Swift 6 rules")
+    @Test("Analyzer has 17 default Swift 6 rules")
     func hasDefaultRules() {
-        #expect(Analyzer.defaultRules.count == 16)
+        #expect(Analyzer.defaultRules.count == 17)
     }
 
     @Test("Default rules include all Swift 6 concurrency rule names")

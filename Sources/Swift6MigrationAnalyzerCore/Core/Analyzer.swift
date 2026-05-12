@@ -24,6 +24,7 @@ public struct Analyzer: Sendable {
             ObservableObjectRule(),
             SynchronizationPrimitiveRule(),
             MainActorMissingRule(),
+            MainActorRunRule(),
             NotificationCenterRule(),
             OperationQueueMainRule(),
             TimerRule(),

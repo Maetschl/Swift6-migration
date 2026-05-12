@@ -21,6 +21,7 @@ public struct FindingComplexity: Sendable {
         ("CombineRule",                  0.6, ".sink/.assign capture self across actor boundaries — Swift 6 compile error; migrate to async sequences"),
         ("DispatchGroupRule",            0.6, "DispatchGroup callbacks execute on untracked threads — Swift 6 compile error; use async let or withTaskGroup"),
         ("TaskDetachedRule",             0.6, "Task.detached drops actor context, sending non-Sendable values — Swift 6 compile error; use Task { }"),
+        ("MainActorRunRule",             0.7, "Sending non-Sendable self into await MainActor.run from non-isolated async context — Swift 6 compile error; add @MainActor or Sendable"),
         ("MainActorMissingRule",         0.6, "UIKit/AppKit subclass should explicitly declare @MainActor isolation (warning — not a compile error)"),
         ("TimerRule",                    0.5, "Callback-based Timer fires on RunLoop thread outside actor isolation (warning — recommendation)"),
         ("ObservableObjectRule",         0.5, "Migrate ObservableObject + @Published to the @Observable macro (warning — recommendation)"),
