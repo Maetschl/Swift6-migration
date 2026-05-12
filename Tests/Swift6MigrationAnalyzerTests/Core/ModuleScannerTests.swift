@@ -302,6 +302,53 @@ struct ModuleScannerTests {
         #expect(module.totalLinesOfCode == 3)
     }
 
+    // MARK: - Manifest-guided detection (Package.swift aware)
+
+    @Test("Test target directory is NOT returned as a module when filesystem fallback is used")
+    func testTargetDirectoryExcludedByFallback() throws {
+        // This tests the filesystem fallback heuristic (no real Package.swift = dump-package fails)
+        // The isTestDirectory heuristic must exclude *Tests suffixed dirs
+        let root = try makeTempDir("TestExclusion", structure: [
+            "Package.swift": "// swift-tools-version: 5.9",
+            "Sources/CoreModule/Core.swift": "struct Core { }",
+            "Sources/UIModule/View.swift": "struct View { }",
+            "Sources/CoreModuleTests/CoreTests.swift": "import XCTest"
+        ])
+        let scanner = ModuleScanner(fileScanner: fileScanner, maxDepth: 2)
+        let modules = scanner.detectModules(in: root)
+        let names = modules.map(\.name)
+        // CoreModuleTests must not appear because isTestDirectory filters it in fallback
+        #expect(!names.contains("CoreModuleTests"))
+        #expect(names.contains("CoreModule") || names.contains("UIModule"))
+    }
+
+    @Test("Test target with 'Test' suffix is excluded by filesystem fallback heuristic")
+    func testSuffixExcludedByHeuristic() throws {
+        let root = try makeTempDir("TestSuffix", structure: [
+            "Package.swift": "// swift-tools-version: 5.9",
+            "Sources/Auth/Auth.swift": "struct Auth { }",
+            "Sources/Network/Net.swift": "struct Net { }",
+            "Sources/AuthTest/AuthTest.swift": "import XCTest"
+        ])
+        let scanner = ModuleScanner(fileScanner: fileScanner, maxDepth: 2)
+        let modules = scanner.detectModules(in: root)
+        let names = modules.map(\.name)
+        #expect(!names.contains("AuthTest"))
+    }
+
+    @Test("FileScanner does not exclude directories named AuthenticationTests")
+    func fileScannerDoesNotExcludeTestNamedDirs() throws {
+        // FileScanner should no longer blanket-exclude dirs containing 'Tests'
+        // (that's now ModuleScanner's job via manifest or heuristic)
+        let root = try makeTempDir("FileScannerTests", structure: [
+            "AuthenticationTests/AuthTests.swift": "import XCTest"
+        ])
+        let scanner = FileScanner()
+        let files = scanner.scan(directory: root)
+        // FileScanner should find the file (it no longer excludes by 'Tests' substring)
+        #expect(files.contains { $0.lastPathComponent == "AuthTests.swift" })
+    }
+
     // MARK: - Helpers
 
     private func makeTempDir(_ name: String, structure: [String: String]) throws -> URL {

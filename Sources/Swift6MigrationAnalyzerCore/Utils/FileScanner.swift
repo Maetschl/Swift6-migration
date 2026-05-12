@@ -3,7 +3,7 @@ import Foundation
 public struct FileScanner: Sendable {
     private static let defaultExclusions = [
         "Pods", "Carthage", "DerivedData", "build",
-        ".build", ".git", "Tests", "SnapshotTests"
+        ".build", ".git"
     ]
 
     private let exclusions: [String]

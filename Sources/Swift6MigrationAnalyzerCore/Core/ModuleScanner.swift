@@ -101,7 +101,7 @@ public struct ModuleScanner: Sendable {
         parentQualifiedName: String?
     ) -> [ModuleInfo] {
 
-        // Strategy 1 — Multi-package workspace
+        // Strategy 1 — Multi-package workspace: immediate subdirs each have Package.swift
         let packageSubdirs = subdirs.filter {
             fm.fileExists(atPath: $0.appendingPathComponent("Package.swift").path)
         }
@@ -110,17 +110,36 @@ public struct ModuleScanner: Sendable {
                 .compactMap { build(dir: $0, depth: depth, parentQualifiedName: parentQualifiedName, fm: fm) }
         }
 
-        // Strategy 2 — SPM package: Sources/ with multiple targets
+        // Strategy 2 — SPM package guided by Package.swift manifest
         let rootHasManifest = fm.fileExists(
             atPath: directory.appendingPathComponent("Package.swift").path
         )
-        let sourcesDir = directory.appendingPathComponent("Sources")
-        if rootHasManifest && fm.fileExists(atPath: sourcesDir.path) {
-            let targetDirs = immediateSubdirectories(of: sourcesDir, using: fm)
-            if targetDirs.count > 1 {
-                let modules = targetDirs
-                    .compactMap { build(dir: $0, depth: depth, parentQualifiedName: parentQualifiedName, fm: fm) }
+        if rootHasManifest {
+            // Use PackageManifestParser to get authoritative source targets (excludes test/plugin targets)
+            if let sourceTargets = PackageManifestParser.sourceTargets(in: directory),
+               sourceTargets.count > 1 {
+                let modules = sourceTargets
+                    .filter { fm.fileExists(atPath: $0.sourcePath.path) }
+                    .compactMap { target -> ModuleInfo? in
+                        build(dir: target.sourcePath,
+                              overrideName: target.name,
+                              depth: depth,
+                              parentQualifiedName: parentQualifiedName,
+                              fm: fm)
+                    }
                 if !modules.isEmpty { return modules }
+            }
+
+            // Fallback: read Sources/ from filesystem if dump-package is unavailable
+            let sourcesDir = directory.appendingPathComponent("Sources")
+            if fm.fileExists(atPath: sourcesDir.path) {
+                let targetDirs = immediateSubdirectories(of: sourcesDir, using: fm)
+                    .filter { !isTestDirectory($0) }
+                if targetDirs.count > 1 {
+                    let modules = targetDirs
+                        .compactMap { build(dir: $0, depth: depth, parentQualifiedName: parentQualifiedName, fm: fm) }
+                    if !modules.isEmpty { return modules }
+                }
             }
         }
 
@@ -138,7 +157,7 @@ public struct ModuleScanner: Sendable {
 
     // MARK: - Module builder (exclusive ownership)
 
-    private func build(dir: URL, depth: Int, parentQualifiedName: String?, fm: FileManager) -> ModuleInfo? {
+    private func build(dir: URL, overrideName: String? = nil, depth: Int, parentQualifiedName: String?, fm: FileManager) -> ModuleInfo? {
         let subdirs = immediateSubdirectories(of: dir, using: fm)
         let subRoots = subModuleRootURLs(in: dir, subdirs: subdirs, fm: fm)
         let exclusiveFiles = exclusiveSourceFiles(in: dir, excludingRoots: subRoots)
@@ -149,10 +168,11 @@ public struct ModuleScanner: Sendable {
         guard !exclusiveFiles.isEmpty || isPackageBoundary || hasSourcesDir || hasSwiftFiles(in: dir) else { return nil }
 
         let parentPrefix  = parentQualifiedName.map { $0 + "/" } ?? ""
-        let qualifiedName = parentPrefix + dir.lastPathComponent
+        let moduleName    = overrideName ?? dir.lastPathComponent
+        let qualifiedName = parentPrefix + moduleName
 
         return ModuleInfo(
-            name: dir.lastPathComponent,
+            name: moduleName,
             qualifiedName: qualifiedName,
             rootURL: dir,
             sourceFiles: exclusiveFiles,
@@ -204,5 +224,13 @@ public struct ModuleScanner: Sendable {
         return contents.filter {
             (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
+    /// Returns true if a directory name looks like a test target (heuristic fallback only —
+    /// `PackageManifestParser` is preferred for SPM packages).
+    private func isTestDirectory(_ url: URL) -> Bool {
+        let name = url.lastPathComponent
+        return name.hasSuffix("Tests") || name.hasSuffix("Test") ||
+               name.hasSuffix("SnapshotTests") || name == "Tests"
     }
 }
