@@ -182,16 +182,20 @@ public struct ModuleScanner: Sendable {
     }
 
     /// Returns the URLs that would become sub-module roots at the next recursion level.
+    /// Used purely for file-ownership boundary detection — must stay filesystem-based.
+    /// PackageManifestParser is only used in detectTopLevel for module *discovery*, not here.
     private func subModuleRootURLs(in directory: URL, subdirs: [URL], fm: FileManager) -> Set<URL> {
         let pkgSubdirs = subdirs.filter {
             fm.fileExists(atPath: $0.appendingPathComponent("Package.swift").path)
         }
         if !pkgSubdirs.isEmpty { return Set(pkgSubdirs) }
 
+        // Filesystem Sources/ subdirs — no manifest call (too slow + wrong paths on real projects)
         let sourcesDir = directory.appendingPathComponent("Sources")
         if fm.fileExists(atPath: directory.appendingPathComponent("Package.swift").path),
            fm.fileExists(atPath: sourcesDir.path) {
             let targetDirs = immediateSubdirectories(of: sourcesDir, using: fm)
+                .filter { !isTestDirectory($0) }
             if targetDirs.count > 1 { return Set(targetDirs) }
         }
 
