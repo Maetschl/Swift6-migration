@@ -207,6 +207,33 @@ public struct HTMLReporter: Reporter {
             "<tr><td><code>\(escapeHTML(entry.rule))</code></td><td><strong>\(entry.weight)</strong></td><td>\(escapeHTML(entry.rationale))</td></tr>"
         }.joined()
 
+        let topModules = modules.filter { $0.depth == 0 }.sorted { $0.aggregateScore > $1.aggregateScore }
+        let maxBarScore = topModules.map { $0.aggregateScore }.first ?? 1.0
+        let barScale = maxBarScore > 0 ? maxBarScore : 1.0
+        let chartRows = topModules.map { module -> String in
+            let score    = module.aggregateScore
+            let safeId   = jsId(module.qualifiedName)
+            let color    = scoreBarColor(score)
+            let widthPct = min(100.0, (score / barScale) * 100.0)
+            if score == 0 {
+                return """
+                <div class="chart-row" onclick="showPanel('modules');showModule('\(safeId)')">
+                  <span class="bar-label">\(escapeHTML(module.name))</span>
+                  <span class="bar-zero">&#x2705;</span>
+                  <span class="bar-value bar-value-zero">0.00</span>
+                </div>
+                """
+            } else {
+                return """
+                <div class="chart-row" onclick="showPanel('modules');showModule('\(safeId)')">
+                  <span class="bar-label">\(escapeHTML(module.name))</span>
+                  <div class="bar-track"><div class="bar-fill" style="width:\(String(format:"%.2f",widthPct))%;background:\(color)"></div></div>
+                  <span class="bar-value" style="color:\(color)">\(String(format:"%.2f",score))</span>
+                </div>
+                """
+            }
+        }.joined()
+
         return """
         <!DOCTYPE html>
         <html lang="en">
@@ -299,6 +326,15 @@ public struct HTMLReporter: Reporter {
           .wand-panel{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:.75rem 1rem;margin-bottom:.5rem;font-size:.85rem}
           .wand-rule-link{color:#1d4ed8}
           .wand-panel code{background:#dbeafe;padding:.1rem .3rem;border-radius:4px;font-size:.8rem}
+          .chart-list{display:flex;flex-direction:column;gap:.55rem;max-width:900px}
+          .chart-row{display:flex;align-items:center;gap:.75rem;cursor:pointer;border-radius:10px;padding:.45rem .6rem;transition:background .12s}
+          .chart-row:hover{background:#e8e8ed}
+          .bar-label{font-size:.88rem;font-weight:600;min-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+          .bar-track{flex:1;background:#e5e5ea;border-radius:999px;height:22px;overflow:hidden;min-width:60px}
+          .bar-fill{height:100%;border-radius:999px;transition:width .4s ease}
+          .bar-value{font-size:.82rem;font-weight:700;min-width:52px;text-align:right;flex-shrink:0}
+          .bar-zero{font-size:1.1rem;line-height:22px}
+          .bar-value-zero{color:#34c759}
         </style>
         </head>
         <body>
@@ -327,6 +363,7 @@ public struct HTMLReporter: Reporter {
 
         <nav>
           <button class="active" onclick="showPanel('modules')">Modules</button>
+          <button onclick="showPanel('chart')">&#x1F4CA; Score Chart</button>
           <button onclick="showPanel('all-findings')">All Findings</button>
           <button onclick="showPanel('complexity')">Complexity Table</button>
         </nav>
@@ -360,6 +397,12 @@ public struct HTMLReporter: Reporter {
           <div id="module-details" style="margin-top:1.5rem;display:none">
             <button class="back-btn" onclick="hideModuleDetails()">&#8592; Back to module list</button>
             \(moduleDetailSections)
+          </div>
+        </div>
+
+        <div id="panel-chart" class="panel">
+          <div class="chart-list">
+            \(chartRows)
           </div>
         </div>
 
@@ -571,6 +614,13 @@ public struct HTMLReporter: Reporter {
             b = Int((0   + t * 48         ).rounded())
         }
         return String(format: "#%02x%02x%02x", r, g, b)
+    }
+
+    private func scoreBarColor(_ score: Double) -> String {
+        if score == 0    { return "#34c759" }   // green  (✅ migrated)
+        if score < 15    { return "#a3d977" }   // near-green (< 15)
+        if score < 30    { return "#ff9500" }   // yellow (15–29)
+        return "#ff3b30"                        // red    (≥ 30)
     }
 
     private func jsId(_ name: String) -> String {

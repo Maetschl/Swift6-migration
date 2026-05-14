@@ -12,9 +12,18 @@ public struct FileScanner: Sendable {
         self.exclusions = Self.defaultExclusions + additionalExclusions
     }
 
-    public func scan(directory: URL) -> [URL] {
+    /// Scans `directory` recursively and returns all `.swift` files.
+    ///
+    /// - Parameter onProgress: Called periodically during scanning with the current
+    ///   directory being visited and total Swift files found so far. Fires once per
+    ///   directory entered (not per file) to keep output readable.
+    public func scan(
+        directory: URL,
+        onProgress: ((_ currentDir: String, _ swiftFilesFound: Int) -> Void)? = nil
+    ) -> [URL] {
         var results: [URL] = []
         let fm = FileManager.default
+        var lastReportedDir = ""
 
         guard let enumerator = fm.enumerator(
             at: directory,
@@ -33,6 +42,15 @@ public struct FileScanner: Sendable {
                     enumerator.skipDescendants()
                 }
                 continue
+            }
+
+            // Report progress whenever we enter a new directory
+            if let progress = onProgress {
+                let dir = url.deletingLastPathComponent().lastPathComponent
+                if dir != lastReportedDir {
+                    lastReportedDir = dir
+                    progress(dir, results.count)
+                }
             }
 
             guard url.pathExtension == "swift" else { continue }

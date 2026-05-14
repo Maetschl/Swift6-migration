@@ -37,19 +37,28 @@ public struct Analyzer: Sendable {
 
     /// Detects modules recursively up to `maxDepth`, analyzes each, and returns
     /// results in depth-first tree order with aggregate scores and child lists computed.
+    ///
+    /// - Parameter onProgress: Optional callback for progress events during both detection
+    ///   and analysis phases. Receives a human-readable message.
+    /// - Parameter onModuleStart: Optional callback invoked just before each module is analyzed.
+    ///   Receives the module's qualified name and source file count.
     public func analyzeModules(
         in directory: URL,
         fileScanner: FileScanner,
-        maxDepth: Int = 4
+        maxDepth: Int = 4,
+        onProgress: ((String) -> Void)? = nil,
+        onModuleStart: ((String, Int) -> Void)? = nil
     ) -> [ModuleResult] {
         let moduleScanner = ModuleScanner(fileScanner: fileScanner, maxDepth: maxDepth)
-        let modules = moduleScanner.detectModules(in: directory)
+        let modules = moduleScanner.detectModules(in: directory, onProgress: onProgress)
 
-        // Step 1 — build raw results (own score/findings only, no aggregate yet)
+        // Step 1 — build raw results using single-pass per file
         var rawResults: [ModuleResult] = modules.map { module in
-            let findings    = analyze(files: module.sourceFiles)
-            let linesOfCode = countLines(in: module.sourceFiles)
-            let indicators  = collectIndicators(in: module.sourceFiles)
+            onModuleStart?(module.qualifiedName, module.sourceFiles.count)
+            let parsed      = parseAll(files: module.sourceFiles)
+            let findings    = analyzeparsed(parsed)
+            let linesOfCode = parsed.reduce(0) { $0 + $1.lineCount }
+            let indicators  = collectIndicatorsParsed(parsed)
             let score       = FindingComplexity.errorScore(for: findings)
             let ownStatus   = buildStatus(score: score, findings: findings)
             return ModuleResult(
@@ -78,9 +87,19 @@ public struct Analyzer: Sendable {
 
     /// Wraps a single file in a one-module result.
     public func analyzeAsModule(file: URL) -> ModuleResult {
-        let findings    = analyze(file: file)
-        let linesOfCode = countLines(in: [file])
-        let indicators  = collectIndicators(in: [file])
+        guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+            print("⚠️  Could not read \(file.path)")
+            return ModuleResult(
+                name: file.lastPathComponent, qualifiedName: file.lastPathComponent,
+                path: file.path, status: .migrated, aggregateStatus: .migrated,
+                score: 0, aggregateScore: 0, fileCount: 0, totalLinesOfCode: 0,
+                findings: [], migrationIndicators: .empty, depth: 0,
+                parentQualifiedName: nil, childQualifiedNames: []
+            )
+        }
+        let parsed      = ParsedFile(url: file, source: source)
+        let findings    = analyzeparsed([parsed])
+        let indicators  = collectIndicatorsParsed([parsed])
         let score       = FindingComplexity.errorScore(for: findings)
         let name        = file.deletingPathExtension().lastPathComponent
         let status      = buildStatus(score: score, findings: findings)
@@ -93,7 +112,7 @@ public struct Analyzer: Sendable {
             score: score,
             aggregateScore: score,
             fileCount: 1,
-            totalLinesOfCode: linesOfCode,
+            totalLinesOfCode: parsed.lineCount,
             findings: findings,
             migrationIndicators: indicators,
             depth: 0,
@@ -169,45 +188,45 @@ public struct Analyzer: Sendable {
         return MigrationStatus(tags)
     }
 
-    // MARK: - Flat analysis
+    // MARK: - Single-pass file parsing
 
-    public func analyze(files: [URL]) -> [Finding] {
+    /// Reads and parses every file exactly once. Files that cannot be read are skipped.
+    func parseAll(files: [URL]) -> [ParsedFile] {
+        files.compactMap { url in
+            guard let source = try? String(contentsOf: url, encoding: .utf8) else {
+                fputs("⚠️  Could not read \(url.path)\n", stderr)
+                return nil
+            }
+            return ParsedFile(url: url, source: source)
+        }
+    }
+
+    /// Runs all rules over pre-parsed files (no extra I/O or re-parse).
+    func analyzeparsed(_ parsed: [ParsedFile]) -> [Finding] {
         var findings: [Finding] = []
-        for fileURL in files { findings.append(contentsOf: analyze(file: fileURL)) }
+        for pf in parsed {
+            let converter = SourceLocationConverter(fileName: pf.url.path, tree: pf.tree)
+            findings.append(contentsOf: rules.flatMap {
+                $0.analyze(tree: pf.tree, file: pf.url.path, locationConverter: converter)
+            })
+        }
         return findings.sorted { ($0.file, $0.line) < ($1.file, $1.line) }
     }
 
-    private func analyze(file: URL) -> [Finding] {
-        guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-            print("⚠️  Could not read \(file.path)")
-            return []
-        }
-        let tree = Parser.parse(source: source)
-        let converter = SourceLocationConverter(fileName: file.path, tree: tree)
-        return rules.flatMap { $0.analyze(tree: tree, file: file.path, locationConverter: converter) }
-    }
-
-    // MARK: - Indicator collection
-
-    private func collectIndicators(in files: [URL]) -> MigrationIndicators {
+    /// Collects migration indicators from pre-parsed files.
+    func collectIndicatorsParsed(_ parsed: [ParsedFile]) -> MigrationIndicators {
         var total = MigrationIndicatorCollector()
-        for fileURL in files {
-            guard let source = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-            let tree = Parser.parse(source: source)
+        for pf in parsed {
             let collector = MigrationIndicatorCollector()
-            collector.walk(tree)
+            collector.walk(pf.tree)
             total = MigrationIndicatorCollector.merge(total, collector)
         }
         return total.build()
     }
 
-    // MARK: - Line counter
+    // MARK: - Legacy flat helpers (kept for external callers / tests)
 
-    private func countLines(in files: [URL]) -> Int {
-        files.reduce(0) { count, url in
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return count }
-            return count + content.components(separatedBy: "\n")
-                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
-        }
+    public func analyze(files: [URL]) -> [Finding] {
+        analyzeparsed(parseAll(files: files))
     }
 }

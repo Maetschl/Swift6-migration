@@ -532,12 +532,15 @@ extension HTMLReporterTests {
         )
         let clean = makeModuleResult(name: "Clean", findings: [])
         let output = reporter.generate(modules: [heavy, clean], projectName: "P")
-        // The heavy module's pill must NOT be green
-        // (green is #34c759; any non-green hex will appear for the heavy module)
-        // We just verify the gradient helper produced at least one non-green hex
-        let greenCount = output.components(separatedBy: "#34c759").count - 1
-        let hasNonGreenPill = !output.contains("#34c75920")  // no green background pill
-            || greenCount < output.components(separatedBy: "score-pill").count
-        #expect(hasNonGreenPill)
+        // The heavy module's score-pill background should NOT be green (#34c75920).
+        // Locate the heavy module's table row, then find its pill background color.
+        let heavyPillIsGreen: Bool = {
+            // Module row contains: <strong>Heavy</strong> … score-pill … background:#xxxxxx20
+            guard let nameRange = output.range(of: "Heavy") else { return false }
+            let rest = String(output[nameRange.upperBound...])
+            guard let bgRange = rest.range(of: "background:") else { return false }
+            return rest[bgRange.upperBound...].hasPrefix("#34c759")
+        }()
+        #expect(!heavyPillIsGreen, "Heavy module's score pill should not use the green (#34c759) background")
     }
 }
