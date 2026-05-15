@@ -29,6 +29,7 @@ public struct FindingComplexity: Sendable {
         // Score 0.3–0.4 — Lower effort (all .warning)
         ("PreconcurrencyRule",           0.4, "@preconcurrency suppresses Swift 6 warnings; each annotation must be audited and removed"),
         ("NotificationCenterRule",       0.4, "Notification observer closures need explicit actor isolation context"),
+        ("CheckedContinuationRule",      0.5, "withUnsafeContinuation skips resume-count validation; withCheckedContinuation is the safe Swift 6 alternative"),
     ]
 
     /// Default weight for unknown rules.

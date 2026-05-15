@@ -9,9 +9,9 @@ struct AnalyzerTests {
 
     // MARK: - Default rules
 
-    @Test("Analyzer has 17 default Swift 6 rules")
+    @Test("Analyzer has 18 default Swift 6 rules")
     func hasDefaultRules() {
-        #expect(Analyzer.defaultRules.count == 17)
+        #expect(Analyzer.defaultRules.count == 18)
     }
 
     @Test("Default rules include all Swift 6 concurrency rule names")
@@ -25,7 +25,8 @@ struct AnalyzerTests {
             "ObservableObjectRule", "SynchronizationPrimitiveRule",
             "MainActorMissingRule", "NotificationCenterRule",
             "OperationQueueMainRule", "TimerRule",
-            "CombineRule", "ThreadRule", "MainActorRunRule"
+            "CombineRule", "ThreadRule", "MainActorRunRule",
+            "CheckedContinuationRule"
         ]
         for name in expected {
             #expect(names.contains(name), "Missing rule: \(name)")

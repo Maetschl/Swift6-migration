@@ -30,6 +30,7 @@ public struct Analyzer: Sendable {
             TimerRule(),
             CombineRule(),
             ThreadRule(),
+            CheckedContinuationRule(),
         ]
     }
 
@@ -206,9 +207,11 @@ public struct Analyzer: Sendable {
         var findings: [Finding] = []
         for pf in parsed {
             let converter = SourceLocationConverter(fileName: pf.url.path, tree: pf.tree)
-            findings.append(contentsOf: rules.flatMap {
+            let raw = rules.flatMap {
                 $0.analyze(tree: pf.tree, file: pf.url.path, locationConverter: converter)
-            })
+            }
+            let filtered = SuppressionFilter.filter(findings: raw, source: pf.source)
+            findings.append(contentsOf: filtered)
         }
         return findings.sorted { ($0.file, $0.line) < ($1.file, $1.line) }
     }

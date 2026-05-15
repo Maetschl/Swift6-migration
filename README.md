@@ -10,9 +10,10 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 - 🔍 Recursively scans Swift projects for migration issues
 - 📦 Automatically detects modules and scores each one independently
-- 📋 16 built-in Swift 6 concurrency
-- 📋 16 built-in Swift 6 concurrency rules + 2 optional code-quality rules
-- 📊 3 report formats: Markdown, JSON, HTML dashboard
+- 📋 18 built-in Swift 6 concurrency rules
+- 📋 18 built-in Swift 6 concurrency rules + inline suppression comments (`// swift6-analyzer: ignore`)
+- 📊 4 report formats: Markdown, JSON, HTML dashboard, SARIF (GitHub code scanning)
+- 🚦 `--fail-on-errors` flag for CI pipelines
 - ⚙️ Configurable exclusions for directories you don't own
 - 🧩 Extensible rule architecture — add your own rules by conforming to `Rule`
 
@@ -53,10 +54,12 @@ swift6-analyzer <path> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--report <format>` | Report format: `markdown`, `json`, or `html` | `markdown` |
+| `--report <format>` | Report format: `markdown`, `json`, `html`, or `sarif` | `markdown` |
 | `--output <file>` | Write the report to a file instead of stdout | stdout |
 | `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_
-| `--include-quality-rules` | Also enable code-quality rules (`ForceUnwrap`, `ForceTry`) | disabled |
+| `--fail-on-errors` | Exit with code 1 if any error-severity findings are detected | disabled |
+| `--max-depth <n>` | Maximum module nesting depth to scan | `4` |
+| `--verbose` | Print per-phase and per-module timing to stderr | disabled |
 
 ---
 
@@ -129,6 +132,33 @@ Use `--exclude` to add more on top of these defaults.
 
 ---
 
+## Suppressing Findings
+
+Add a suppression comment to silence a finding on a specific line without disabling the rule globally.
+
+### Suppress all rules on a line
+
+```swift
+var sharedCache: [String: Any] = [:] // swift6-analyzer: ignore
+```
+
+### Suppress a specific rule on a line
+
+```swift
+var sharedCache: [String: Any] = [:] // swift6-analyzer: ignore GlobalMutableStateRule
+```
+
+### Suppress from the line above
+
+```swift
+// swift6-analyzer: ignore GlobalMutableStateRule
+var sharedCache: [String: Any] = [:]
+```
+
+Suppression comments are case-sensitive. The exact prefix `swift6-analyzer: ignore` is required.
+
+---
+
 ## Built-in Rules
 
 > **Weight** — complexity of the required fix (1.0 = full architectural redesign, 0.3 = trivial substitution). The migration **score** for a module = `Σ(finding × weight)`. A score of `0.0` means the module is fully migrated.
@@ -153,6 +183,8 @@ Use `--exclude` to add more on top of these defaults.
 | [📖 `CompletionHandlerRule`](Docs/Rules/CompletionHandlerRule.md) | ⚠️ warning | 0.5 | `completion: @escaping (...)` |
 | [📖 `PreconcurrencyRule`](Docs/Rules/PreconcurrencyRule.md) | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances |
 | [📖 `NotificationCenterRule`](Docs/Rules/NotificationCenterRule.md) | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` |
+| [📖 `MainActorRunRule`](Docs/Rules/MainActorRunRule.md) | 🔴 error | 0.7 | `await MainActor.run { self }` on non-Sendable class — data race |
+| [📖 `CheckedContinuationRule`](Docs/Rules/CheckedContinuationRule.md) | ⚠️ warning | 0.5 | `withUnsafeContinuation` / `withUnsafeThrowingContinuation` |
 
 
 ---
@@ -184,8 +216,9 @@ Each rule has a dedicated documentation page with:
 | [ObservableObjectRule](Docs/Rules/ObservableObjectRule.md) | `ObservableObject` + `@Published` instead of `@Observable` |
 | [CompletionHandlerRule](Docs/Rules/CompletionHandlerRule.md) | `@escaping` completion handlers ready for `async/await` |
 | [PreconcurrencyRule](Docs/Rules/PreconcurrencyRule.md) | `@preconcurrency` suppressing real Swift 6 errors |
-| [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries
-| [ForceUnwrapRule](Docs/Rules/ForceUnwrapRule.md) | `value!` crashing instead of optional binding |
+| [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries |
+| [MainActorRunRule](Docs/Rules/MainActorRunRule.md) | `await MainActor.run { self }` on a non-Sendable class — Swift 6 compile error |
+| [CheckedContinuationRule](Docs/Rules/CheckedContinuationRule.md) | `withUnsafeContinuation` skipping resume-count validation |
 
 ---
 
@@ -240,6 +273,19 @@ Interactive dashboard with:
 - Summary cards (total, errors, warnings, infos)
 - Findings grouped by rule
 - Sortable table of all findings (click any column header to sort)
+
+### SARIF
+
+[Static Analysis Results Interchange Format](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html) — standard format accepted by GitHub Advanced Security. Upload to a repository to display findings as **inline annotations on pull-request diffs** and in the **Security tab**.
+
+```bash
+.build/release/swift6-analyzer /path/to/MyApp \
+  --report sarif \
+  --output results.sarif
+
+# Upload via GitHub CLI
+gh code-scanning upload-sarif --sarif results.sarif
+```
 
 ---
 
@@ -303,7 +349,9 @@ Docs/
     ├── GlobalMutableStateRule.md
     ├── NonisolatedUnsafeRule.md
     ├── UncheckedSendableRule.md
-    └── ... (18 files total)
+    ├── MainActorRunRule.md
+    ├── CheckedContinuationRule.md
+    └── ... (20 files total)
 Sources/
 ├── Swift6MigrationAnalyzer/
 │   ├── main.swift                        ← Entry point
@@ -319,7 +367,7 @@ Sources/
     │   ├── MigrationStatus.swift
     │   ├── FindingComplexity.swift
     │   └── MigrationIndicators.swift
-    ├── Rules/                            ← 18 rule implementations (each links to Docs/Rules/)
+    ├── Rules/                            ← 19 rule implementations (each links to Docs/Rules/)
     │   ├── GlobalMutableStateRule.swift
     │   ├── NonisolatedUnsafeRule.swift
     │   ├── UncheckedSendableRule.swift
@@ -331,19 +379,25 @@ Sources/
     │   ├── DispatchGroupRule.swift
     │   ├── TaskDetachedRule.swift
     │   ├── MainActorMissingRule.swift
+    │   ├── MainActorRunRule.swift
     │   ├── TimerRule.swift
     │   ├── ObservableObjectRule.swift
     │   ├── CompletionHandlerRule.swift
     │   ├── PreconcurrencyRule.swift
-    │   └── NotificationCenterRule.swift
+    │   ├── NotificationCenterRule.swift
+    │   └── CheckedContinuationRule.swift
     ├── Reporters/
     │   ├── Reporter.swift
     │   ├── MarkdownReporter.swift
     │   ├── JSONReporter.swift
-    │   └── HTMLReporter.swift
+    │   ├── HTMLReporter.swift
+    │   ├── SARIFReporter.swift
+    │   └── AssistantReporter.swift
     └── Utils/
         ├── FileScanner.swift
-        └── SourceLocationHelper.swift
+        ├── SourceLocationHelper.swift
+        ├── PackageManifestParser.swift
+        └── SuppressionFilter.swift
 ```
 
 ---

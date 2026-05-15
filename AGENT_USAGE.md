@@ -70,6 +70,22 @@ swift6-analyzer /path/to/TargetProject \
   --output swift6-report.json
 ```
 
+### Save a SARIF report (GitHub code scanning)
+
+```bash
+swift6-analyzer /path/to/TargetProject \
+  --report sarif \
+  --output results.sarif
+# Upload via GitHub CLI:
+# gh code-scanning upload-sarif --sarif results.sarif
+```
+
+### Fail CI on error-severity findings
+
+```bash
+swift6-analyzer /path/to/TargetProject --fail-on-errors
+```
+
 ### Save a Markdown report
 
 ```bash
@@ -235,16 +251,18 @@ Or for Xcode projects: set **Swift Language Version** to **Swift 6** in Build Se
 ## CLI Reference (Quick Summary)
 
 ```
-USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>
-USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>] [--include-quality-rules]
+USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>] [--fail-on-errors] [--max-depth <n>] [--verbose]
 
 ARGUMENTS:
   <path>                    Path to a Swift project directory or a single .swift file
 
 OPTIONS:
   --exclude <dirs>          Comma-separated directory names to skip (added on top of built-in exclusions)
-  --report <format>         markdown | json | html  (default: markdown)
+  --report <format>         markdown | json | html | sarif  (default: markdown)
   --output <file>           Write report to file instead of stdout
+  --fail-on-errors          Exit with code 1 if any .error-severity findings are detected
+  --max-depth <n>           Maximum module nesting depth to scan (default: 4)
+  --verbose                 Print per-phase and per-module timing to stderr
 
 BUILT-IN EXCLUDED DIRECTORIES (always skipped):
   Pods, Carthage, DerivedData, build, .build, .git, Tests, SnapshotTests
@@ -256,10 +274,16 @@ BUILT-IN EXCLUDED DIRECTORIES (always skipped):
 
 | Code | Meaning |
 |------|---------|
-| `0` | Tool ran successfully (findings may still exist) |
-| `1` | Fatal error (path not found, unreadable file, etc.) |
+| `0` | Tool ran successfully (findings may still exist unless `--fail-on-errors` is set) |
+| `1` | Fatal error (path not found, unreadable file, etc.) OR `--fail-on-errors` triggered |
 
-The tool **does not** exit with a non-zero code just because findings exist. To enforce a clean scan in CI, parse the JSON and check `totalFindings == 0` or `totalScore == 0.0` yourself.
+Without `--fail-on-errors` the tool exits `0` even when findings exist. Use `--fail-on-errors` to make CI pipelines fail automatically on any `.error`-severity finding:
+
+```bash
+swift6-analyzer /path/to/MyApp --fail-on-errors
+```
+
+To fail only when the score exceeds a threshold, parse the JSON report and check `totalScore` yourself.
 
 ---
 

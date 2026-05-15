@@ -48,6 +48,9 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
     @Flag(name: .long, help: "Print per-phase and per-module timing to stderr.")
     var verbose: Bool = false
 
+    @Flag(name: .long, help: "Exit with code 1 if any error-severity findings are detected.")
+    var failOnErrors: Bool = false
+
     mutating func run() throws {
         let totalStart = Date()
         let targetURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
@@ -134,6 +137,8 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             reporter = JSONReporter()
         case "html":
             reporter = HTMLReporter()
+        case "sarif":
+            reporter = SARIFReporter()
         case "assistant":
             let resolvedDocsURL: URL? = {
                 if let dp = docsPath {
@@ -165,5 +170,14 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             fputs("⏱  report generation: \(reportTime)\n", stderr)
         }
         fputs("⏱  total: \(elapsed(since: totalStart))\n", stderr)
+
+        if failOnErrors {
+            let allFindings = modules.flatMap { $0.findings }
+            let errorCount = allFindings.filter { $0.severity == .error }.count
+            if errorCount > 0 {
+                fputs("❌ --fail-on-errors: \(errorCount) error-severity finding(s) detected.\n", stderr)
+                throw ExitCode(1)
+            }
+        }
     }
 }
