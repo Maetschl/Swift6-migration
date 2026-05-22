@@ -22,9 +22,10 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         Modules are detected up to --max-depth levels deep (default: 4).
         Each file is owned exclusively by the deepest module it belongs to.
 
-        All 16 built-in rules cover strict concurrency patterns (global mutable state,
+        All 21 built-in rules cover strict concurrency patterns (global mutable state,
         actor isolation, DispatchQueue, ObservableObject, NotificationCenter, etc.).
-        """
+        """,
+        version: "1.2.0"
     )
 
     @Argument(help: "Path to the Swift project directory or file to analyze.")
@@ -33,10 +34,10 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
     @Option(name: .long, help: "Comma-separated list of directory names to exclude (e.g. Tests,Mocks).")
     var exclude: String = ""
 
-    @Option(name: .long, help: "Report format: markdown, json, or html. Default: markdown.")
-    var report: String = "markdown"
+    @Option(name: .long, help: "Report format(s): markdown, json, html, sarif, xcode, diff. Repeat for multiple. Default: markdown.")
+    var report: [String] = []
 
-    @Option(name: .long, help: "Output file path. If omitted, prints to stdout.")
+    @Option(name: .long, help: "Output file path or stem. If omitted, prints to stdout (single format only).")
     var output: String?
 
     @Option(name: .long, help: "Maximum module nesting depth to scan (default: 4, minimum: 1).")
@@ -44,6 +45,18 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
 
     @Option(name: .long, help: "Path to the Docs/Rules/ directory for assistant mode rule documentation. Defaults to <project>/Docs/Rules/.")
     var docsPath: String?
+
+    @Option(name: .long, help: "Path to a baseline JSON report for diff mode.")
+    var baseline: String?
+
+    @Option(name: .long, help: "Save the current run as a baseline JSON to this path.")
+    var saveBaseline: String?
+
+    @Option(name: .long, help: "Path to a .swift6-analyzer.json config file. Auto-detected at project root if not specified.")
+    var config: String?
+
+    @Flag(name: .long, help: "Include Tests and SnapshotTests directories (excluded by default).")
+    var includeTests: Bool = false
 
     @Flag(name: .long, help: "Print per-phase and per-module timing to stderr.")
     var verbose: Bool = false
@@ -62,14 +75,36 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
             throw ExitCode.failure
         }
 
-        let resolvedDepth = max(1, maxDepth)
-        let additionalExclusions = exclude
+        // Load config file (auto-detect at project root, or --config path)
+        let resolvedConfig = loadConfig(projectRoot: isDirectory.boolValue ? targetURL : targetURL.deletingLastPathComponent())
+
+        // Merge: CLI flags override config
+        let resolvedDepth = max(1, resolvedConfig.maxDepth.map { maxDepth == 4 ? $0 : maxDepth } ?? maxDepth)
+        let configExclusions = resolvedConfig.exclude ?? []
+        let cliExclusions = exclude
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+        let additionalExclusions = Array(Set(configExclusions + cliExclusions))
+        let resolvedIncludeTests = includeTests || (resolvedConfig.includeTests ?? false)
+
+        // Resolved report formats (CLI overrides config default)
+        let resolvedReports: [String] = {
+            if !report.isEmpty { return report }
+            if let cf = resolvedConfig.report, !cf.isEmpty { return cf }
+            return ["markdown"]
+        }()
+
+        // Validate: multiple formats require --output
+        if resolvedReports.count > 1 && output == nil {
+            fputs("❌ Multiple --report formats require --output <path> to write files.\n", stderr)
+            throw ExitCode.failure
+        }
 
         let fileScanner = FileScanner(additionalExclusions: additionalExclusions)
-        let analyzer = Analyzer()
+        let disabledRules = resolvedConfig.disabledRules ?? []
+        let severityOverrides = resolvedConfig.severityOverrides ?? [:]
+        let analyzer = Analyzer(disabledRules: disabledRules, severityOverrides: severityOverrides, includeTests: resolvedIncludeTests)
 
         // Collect module results
         let modules: [ModuleResult]
@@ -129,42 +164,48 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         fputs("   ✅ Migrated: \(migratedCount)  ⏳ Pending: \(pendingCount)\n", stderr)
         fputs("\n", stderr)
 
-        // Generate report
+        // Save baseline if requested
+        if let saveBaselinePath = saveBaseline ?? resolvedConfig.saveBaseline {
+            let baselineURL = URL(fileURLWithPath: (saveBaselinePath as NSString).standardizingPath)
+            let encoded = try JSONEncoder().encode(modules)
+            try encoded.write(to: baselineURL)
+            fputs("💾 Baseline saved to \(baselineURL.path)\n", stderr)
+        }
+
+        // Generate report(s)
         let reportStart = Date()
-        let reporter: any Reporter
-        switch report.lowercased() {
-        case "json":
-            reporter = JSONReporter()
-        case "html":
-            reporter = HTMLReporter()
-        case "sarif":
-            reporter = SARIFReporter()
-        case "assistant":
-            let resolvedDocsURL: URL? = {
-                if let dp = docsPath {
-                    return URL(fileURLWithPath: (dp as NSString).standardizingPath)
-                }
-                // Default: <analyzed-dir>/Docs/Rules/
-                if isDirectory.boolValue {
-                    return targetURL.appendingPathComponent("Docs/Rules")
-                }
-                return nil
-            }()
-            reporter = AssistantReporter(docsPath: resolvedDocsURL)
-        default:
-            reporter = MarkdownReporter()
+        let resolvedDocsURL: URL? = {
+            if let dp = docsPath { return URL(fileURLWithPath: (dp as NSString).standardizingPath) }
+            if isDirectory.boolValue { return targetURL.appendingPathComponent("Docs/Rules") }
+            return nil
+        }()
+
+        for format in resolvedReports {
+            let reporter = makeReporter(format: format.lowercased(), docsURL: resolvedDocsURL)
+            let reportContent: String
+
+            if format.lowercased() == "diff" {
+                reportContent = try generateDiffReport(
+                    modules: modules,
+                    projectName: projectName,
+                    baselinePath: baseline ?? resolvedConfig.baseline
+                )
+            } else {
+                reportContent = reporter.generate(modules: modules, projectName: projectName)
+            }
+
+            if let outputStem = output {
+                let ext = fileExtension(for: format.lowercased())
+                let outputPath = resolvedReports.count == 1 ? outputStem : "\(outputStem).\(ext)"
+                let outputURL = URL(fileURLWithPath: (outputPath as NSString).standardizingPath)
+                try reportContent.write(to: outputURL, atomically: true, encoding: .utf8)
+                fputs("✅ \(format) report written to \(outputURL.path)\n", stderr)
+            } else {
+                print(reportContent)
+            }
         }
 
-        let reportContent = reporter.generate(modules: modules, projectName: projectName)
         let reportTime = elapsed(since: reportStart)
-
-        if let outputPath = output {
-            let outputURL = URL(fileURLWithPath: (outputPath as NSString).standardizingPath)
-            try reportContent.write(to: outputURL, atomically: true, encoding: .utf8)
-            fputs("✅ Report written to \(outputURL.path)\n", stderr)
-        } else {
-            print(reportContent)
-        }
 
         if verbose {
             fputs("⏱  report generation: \(reportTime)\n", stderr)
@@ -179,5 +220,56 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
                 throw ExitCode(1)
             }
         }
+    }
+
+    // MARK: - Helpers
+
+    private func makeReporter(format: String, docsURL: URL?) -> any Reporter {
+        switch format {
+        case "json":      return JSONReporter()
+        case "html":      return HTMLReporter()
+        case "sarif":     return SARIFReporter()
+        case "xcode":     return XcodeReporter()
+        case "assistant": return AssistantReporter(docsPath: docsURL)
+        default:          return MarkdownReporter()
+        }
+    }
+
+    private func fileExtension(for format: String) -> String {
+        switch format {
+        case "json", "sarif": return format
+        case "html":          return "html"
+        case "xcode":         return "txt"
+        case "diff":          return "md"
+        default:              return "md"
+        }
+    }
+
+    private func generateDiffReport(modules: [ModuleResult], projectName: String, baselinePath: String?) throws -> String {
+        guard let path = baselinePath else {
+            fputs("⚠️  --report diff requires --baseline <file>. Falling back to markdown.\n", stderr)
+            return MarkdownReporter().generate(modules: modules, projectName: projectName)
+        }
+        let baselineURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
+        let data = try Data(contentsOf: baselineURL)
+        let baselineModules = try JSONDecoder().decode([ModuleResult].self, from: data)
+        let diff = BaselineComparator().compare(baseline: baselineModules, current: modules)
+        return DiffReporter().generate(diff: diff, projectName: projectName)
+    }
+
+    /// Auto-detects `.swift6-analyzer.json` at `projectRoot`, or loads from `--config` path.
+    private func loadConfig(projectRoot: URL) -> AnalyzerConfig {
+        let configURL: URL
+        if let configPath = config {
+            configURL = URL(fileURLWithPath: (configPath as NSString).standardizingPath)
+        } else {
+            configURL = projectRoot.appendingPathComponent(".swift6-analyzer.json")
+        }
+        guard let data = try? Data(contentsOf: configURL),
+              let cfg = try? JSONDecoder().decode(AnalyzerConfig.self, from: data) else {
+            return AnalyzerConfig()
+        }
+        fputs("⚙️  Config loaded from \(configURL.path)\n", stderr)
+        return cfg
     }
 }
