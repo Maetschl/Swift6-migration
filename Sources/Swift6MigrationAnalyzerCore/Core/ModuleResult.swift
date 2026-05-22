@@ -31,6 +31,10 @@ public struct ModuleResult: Codable, Sendable {
     public let aggregateFindings: Int
     /// Sum of all migration indicators across this module and all descendants.
     public let aggregateMigrationIndicators: MigrationIndicators
+    /// Total Swift source files across this module and all descendants.
+    public let aggregateFileCount: Int
+    /// Total lines of code across this module and all descendants.
+    public let aggregateLinesOfCode: Int
 
     public init(
         name: String,
@@ -48,7 +52,9 @@ public struct ModuleResult: Codable, Sendable {
         parentQualifiedName: String? = nil,
         childQualifiedNames: [String] = [],
         aggregateFindings: Int? = nil,
-        aggregateMigrationIndicators: MigrationIndicators? = nil
+        aggregateMigrationIndicators: MigrationIndicators? = nil,
+        aggregateFileCount: Int? = nil,
+        aggregateLinesOfCode: Int? = nil
     ) {
         self.name = name
         self.qualifiedName = qualifiedName
@@ -66,5 +72,7 @@ public struct ModuleResult: Codable, Sendable {
         self.childQualifiedNames = childQualifiedNames
         self.aggregateFindings = aggregateFindings ?? findings.count
         self.aggregateMigrationIndicators = aggregateMigrationIndicators ?? migrationIndicators
+        self.aggregateFileCount = aggregateFileCount ?? fileCount
+        self.aggregateLinesOfCode = aggregateLinesOfCode ?? totalLinesOfCode
     }
 }

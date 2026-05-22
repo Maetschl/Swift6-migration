@@ -182,9 +182,13 @@ public struct Analyzer: Sendable {
             let childrenAggFindings = children.compactMap { byName[$0]?.aggregateFindings }.reduce(0, +)
             let childrenAggInd      = children.compactMap { byName[$0]?.aggregateMigrationIndicators }
                                               .reduce(MigrationIndicators.empty, +)
+            let childrenAggFiles    = children.compactMap { byName[$0]?.aggregateFileCount }.reduce(0, +)
+            let childrenAggLines    = children.compactMap { byName[$0]?.aggregateLinesOfCode }.reduce(0, +)
             let aggScore    = module.score + childrenAggScore
             let aggFindings = module.findings.count + childrenAggFindings
             let aggInd      = module.migrationIndicators + childrenAggInd
+            let aggFiles    = module.fileCount + childrenAggFiles
+            let aggLines    = module.totalLinesOfCode + childrenAggLines
             let childrenHaveWarnings = children.compactMap { byName[$0]?.aggregateStatus.hasWarnings }.contains(true)
             let aggHasWarnings = module.status.hasWarnings || childrenHaveWarnings
             var aggTags: Set<MigrationTag> = aggScore > 0 ? [.pendingMigration] : [.migrated]
@@ -207,7 +211,9 @@ public struct Analyzer: Sendable {
                 parentQualifiedName: module.parentQualifiedName,
                 childQualifiedNames: children.sorted(),
                 aggregateFindings: aggFindings,
-                aggregateMigrationIndicators: aggInd
+                aggregateMigrationIndicators: aggInd,
+                aggregateFileCount: aggFiles,
+                aggregateLinesOfCode: aggLines
             )
         }
 

@@ -86,7 +86,7 @@ public struct HTMLReporter: Reporter {
               <td style="padding-left:\(paddingLeft)px">\(depthChevrons)\(toggleBtn)<strong>\(escapeHTML(module.name))</strong></td>
               <td><div class="status-cell">\(module.aggregateStatus.badgesHTML)</div></td>
               <td><span class="score-pill" style="background:\(sc)20;color:\(sc)">\(aggrScore)</span>\(ownScoreNote)</td>
-              <td>\(module.fileCount)</td>
+              <td>\(module.aggregateFileCount)</td>
               <td>\(findingsBadge)</td>
               <td class="indicator">\(ind.actorDeclarationCount)</td>
               <td class="indicator">\(ind.mainActorAnnotationCount)</td>
@@ -133,7 +133,7 @@ public struct HTMLReporter: Reporter {
                     <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
                     <div class="status-cell">\(module.aggregateStatus.badgesHTML)</div>
                     <span class="score-pill-lg">Subtree Score \(String(format: "%.2f", module.aggregateScore))</span>
-                    <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
+                    <span class="meta">\(module.aggregateFileCount) files &middot; \(module.aggregateLinesOfCode) lines</span>
                   </div>
                   \(indicatorBar)\(childrenSummary)\(emptyMsg)
                 </div>
@@ -183,7 +183,7 @@ public struct HTMLReporter: Reporter {
                 <h2>\(module.aggregateStatus.icon) \(escapeHTML(module.qualifiedName))</h2>
                 <div class="status-cell">\(module.aggregateStatus.badgesHTML)</div>
                 <span class="score-pill-lg">\(scoreLabel)</span>
-                <span class="meta">\(module.fileCount) files &middot; \(module.totalLinesOfCode) lines</span>
+                <span class="meta">\(module.aggregateFileCount) files &middot; \(module.aggregateLinesOfCode) lines</span>
               </div>
               \(indicatorBar)\(childrenSummary)\(ruleCards)
             </div>
