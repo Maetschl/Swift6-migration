@@ -203,13 +203,15 @@ Use the findings to guide code changes. The table below maps each rule to the co
 | `GlobalMutableStateRule` | 🔴 error | 0.9 | `var` at global/file scope | Add `@MainActor` to the variable, wrap it inside an `actor`, or convert it to a `let` constant |
 | `SynchronizationPrimitiveRule` | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, `NSRecursiveLock` | Replace with an `actor` that owns the protected state |
 | `DispatchQueueRule` | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async {}` → warning; `DispatchQueue.*.sync {}` → error | Replace with `Task { @MainActor in … }` or annotate enclosing type with `@MainActor` |
+| `ActorReentrancyRule` | ⚠️ warning | 0.7 | `async` actor method containing `await` on external call | Snapshot any actor state needed before the `await`; validate invariants after resuming |
 | `OperationQueueMainRule` | ⚠️ warning | 0.7 | `OperationQueue.main.addOperation {}` | Replace with `Task { @MainActor in … }` |
 | `TaskDetachedRule` | ⚠️ warning | 0.6 | `Task.detached { }` | Prefer `Task { }` (inherits actor context); only use `Task.detached` if explicit isolation escape is intentional |
 | `MainActorMissingRule` | ⚠️ warning | 0.6 | `UIViewController`, `UIView`, `NSViewController`, `NSView` subclass without `@MainActor` | Add `@MainActor` to the class declaration |
+| `AsyncSequenceRule` | ⚠️ warning | 0.5 | `PassthroughSubject<T,E>`, `CurrentValueSubject<T,E>` | Replace with `AsyncStream` / `AsyncThrowingStream`; consumers use `for await` |
 | `ObservableObjectRule` | ⚠️ warning | 0.5 | `class … : ObservableObject` with `@Published` properties | Migrate to `@Observable` macro (requires `import Observation`; remove `ObservableObject` conformance and `@Published`) |
 | `CompletionHandlerRule` | ⚠️ warning | 0.5 | Function parameter `completion: @escaping (…) -> Void` | Refactor function to `async` / `await`; update all call-sites |
 | `NotificationCenterRule` | ⚠️ warning | 0.4 | `NotificationCenter.default.addObserver` closure or `.post` | For observers: use `NotificationCenter.default.notifications(named:).for(object:)` async sequence; annotate posting code with `@MainActor` if UI-related |
-| `ForceUnwrapRule` *(quality)* | ⚠️ warning | 0.3 | `value!` | Replace with `if let`, `guard let`, or `?? defaultValue` |
+| `WithUnsafeCurrentTaskRule` | ⚠️ warning | 0.4 | `withUnsafeCurrentTask { }`, `Task.current` | Replace with `withTaskCancellationHandler` or `Task.checkCancellation()` |
 
 > **Complexity weight** indicates how much effort the fix typically requires (1.0 = full architectural redesign, 0.3 = trivial substitution). Prioritize high-weight findings first.
 
@@ -251,21 +253,27 @@ Or for Xcode projects: set **Swift Language Version** to **Swift 6** in Build Se
 ## CLI Reference (Quick Summary)
 
 ```
-USAGE: swift6-analyzer <path> [--exclude <dirs>] [--report <format>] [--output <file>] [--fail-on-errors] [--max-depth <n>] [--verbose]
+USAGE: swift6-analyzer <path> [options]
 
 ARGUMENTS:
   <path>                    Path to a Swift project directory or a single .swift file
 
 OPTIONS:
   --exclude <dirs>          Comma-separated directory names to skip (added on top of built-in exclusions)
-  --report <format>         markdown | json | html | sarif  (default: markdown)
-  --output <file>           Write report to file instead of stdout
+  --report <format>         markdown | json | html | sarif | xcode | diff  (default: markdown, repeatable)
+  --output <file>           Write report to file; required when multiple --report values are given
   --fail-on-errors          Exit with code 1 if any .error-severity findings are detected
   --max-depth <n>           Maximum module nesting depth to scan (default: 4)
+  --include-tests           Include Tests and SnapshotTests directories (excluded by default)
+  --config <file>           Path to .swift6-analyzer.json config file (auto-detected at project root)
+  --baseline <file>         Path to a previous JSON report for diff mode
+  --save-baseline <file>    Save the current run as a baseline JSON file
   --verbose                 Print per-phase and per-module timing to stderr
+  --version                 Print tool version (1.2.0) and exit
 
-BUILT-IN EXCLUDED DIRECTORIES (always skipped):
-  Pods, Carthage, DerivedData, build, .build, .git, Tests, SnapshotTests
+BUILT-IN EXCLUDED DIRECTORIES (always skipped unless --include-tests):
+  Pods, Carthage, DerivedData, build, .build, .git
+  Tests, SnapshotTests, *Tests, *Test  (suppressed by --include-tests)
 ```
 
 ---

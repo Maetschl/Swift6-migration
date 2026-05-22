@@ -10,11 +10,13 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 - 🔍 Recursively scans Swift projects for migration issues
 - 📦 Automatically detects modules and scores each one independently
-- 📋 18 built-in Swift 6 concurrency rules
-- 📋 18 built-in Swift 6 concurrency rules + inline suppression comments (`// swift6-analyzer: ignore`)
-- 📊 4 report formats: Markdown, JSON, HTML dashboard, SARIF (GitHub code scanning)
+- 📋 21 built-in Swift 6 concurrency rules
+- 💬 Inline suppression comments (`// swift6-analyzer: ignore`)
+- 📊 6 report formats: Markdown, JSON, HTML dashboard, SARIF, Xcode, Diff
+- ⚡ Parallel module analysis for fast scans on large codebases
 - 🚦 `--fail-on-errors` flag for CI pipelines
-- ⚙️ Configurable exclusions for directories you don't own
+- ⚙️ Configurable via `.swift6-analyzer.json` project config file
+- 📏 Baseline / diff mode to track progress across runs
 - 🧩 Extensible rule architecture — add your own rules by conforming to `Rule`
 
 ---
@@ -54,12 +56,17 @@ swift6-analyzer <path> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--report <format>` | Report format: `markdown`, `json`, `html`, or `sarif` | `markdown` |
-| `--output <file>` | Write the report to a file instead of stdout | stdout |
-| `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_
+| `--report <format>` | Report format — repeatable for multiple outputs: `markdown`, `json`, `html`, `sarif`, `xcode`, `diff` | `markdown` |
+| `--output <file>` | Write the report to a file (required when using multiple `--report` values) | stdout |
+| `--exclude <dirs>` | Comma-separated list of directory names to skip | _(none)_ |
 | `--fail-on-errors` | Exit with code 1 if any error-severity findings are detected | disabled |
 | `--max-depth <n>` | Maximum module nesting depth to scan | `4` |
+| `--include-tests` | Include `Tests` and `SnapshotTests` directories (excluded by default) | disabled |
+| `--config <file>` | Path to a `.swift6-analyzer.json` config file (auto-detected at project root) | _(auto)_ |
+| `--baseline <file>` | Path to a previous JSON report for diff mode | _(none)_ |
+| `--save-baseline <file>` | Save the current run as a baseline JSON file | _(none)_ |
 | `--verbose` | Print per-phase and per-module timing to stderr | disabled |
+| `--version` | Print the tool version and exit | — |
 
 ---
 
@@ -173,18 +180,21 @@ Suppression comments are case-sensitive. The exact prefix `swift6-analyzer: igno
 | [📖 `SynchronizationPrimitiveRule`](Docs/Rules/SynchronizationPrimitiveRule.md) | ⚠️ warning | 0.8 | `NSLock`, `DispatchSemaphore`, `os_unfair_lock`, etc. |
 | [📖 `ThreadRule`](Docs/Rules/ThreadRule.md) | ⚠️ warning | 0.7 | `Thread.detachNewThread`, `Thread.isMainThread`, `Thread.main` |
 | [📖 `DispatchQueueRule`](Docs/Rules/DispatchQueueRule.md) | ⚠️ warning / 🔴 error | 0.7 | `DispatchQueue.main.async { }`, `.sync { }` |
+| [📖 `ActorReentrancyRule`](Docs/Rules/ActorReentrancyRule.md) | ⚠️ warning | 0.7 | `async` actor methods awaiting external calls — reentrancy risk |
+| [📖 `MainActorRunRule`](Docs/Rules/MainActorRunRule.md) | 🔴 error | 0.7 | `await MainActor.run { self }` on non-Sendable class — data race |
 | [📖 `OperationQueueMainRule`](Docs/Rules/OperationQueueMainRule.md) | ⚠️ warning | 0.7 | `OperationQueue.main` |
 | [📖 `CombineRule`](Docs/Rules/CombineRule.md) | ⚠️ warning | 0.6 | `.sink { }`, `assign(to:on:)`, `AnyCancellable` |
 | [📖 `DispatchGroupRule`](Docs/Rules/DispatchGroupRule.md) | ⚠️ warning | 0.6 | `DispatchGroup()` usage |
 | [📖 `TaskDetachedRule`](Docs/Rules/TaskDetachedRule.md) | ⚠️ warning | 0.6 | `Task.detached { }` |
 | [📖 `MainActorMissingRule`](Docs/Rules/MainActorMissingRule.md) | ⚠️ warning | 0.6 | UIKit/AppKit subclasses missing `@MainActor` |
+| [📖 `AsyncSequenceRule`](Docs/Rules/AsyncSequenceRule.md) | ⚠️ warning | 0.5 | `PassthroughSubject` / `CurrentValueSubject` → `AsyncStream` candidates |
 | [📖 `TimerRule`](Docs/Rules/TimerRule.md) | ⚠️ warning | 0.5 | Callback-based `Timer.scheduledTimer` / `Timer(timeInterval:…)` |
 | [📖 `ObservableObjectRule`](Docs/Rules/ObservableObjectRule.md) | ⚠️ warning | 0.5 | `ObservableObject` + `@Published` |
 | [📖 `CompletionHandlerRule`](Docs/Rules/CompletionHandlerRule.md) | ⚠️ warning | 0.5 | `completion: @escaping (...)` |
+| [📖 `CheckedContinuationRule`](Docs/Rules/CheckedContinuationRule.md) | ⚠️ warning | 0.5 | `withUnsafeContinuation` / `withUnsafeThrowingContinuation` |
 | [📖 `PreconcurrencyRule`](Docs/Rules/PreconcurrencyRule.md) | ⚠️ warning | 0.4 | `@preconcurrency import …` and `@preconcurrency` conformances |
 | [📖 `NotificationCenterRule`](Docs/Rules/NotificationCenterRule.md) | ⚠️ warning | 0.4 | `NotificationCenter.addObserver` / `.post` |
-| [📖 `MainActorRunRule`](Docs/Rules/MainActorRunRule.md) | 🔴 error | 0.7 | `await MainActor.run { self }` on non-Sendable class — data race |
-| [📖 `CheckedContinuationRule`](Docs/Rules/CheckedContinuationRule.md) | ⚠️ warning | 0.5 | `withUnsafeContinuation` / `withUnsafeThrowingContinuation` |
+| [📖 `WithUnsafeCurrentTaskRule`](Docs/Rules/WithUnsafeCurrentTaskRule.md) | ⚠️ warning | 0.4 | Deprecated `Task.current` / `withUnsafeCurrentTask` |
 
 
 ---
@@ -207,18 +217,21 @@ Each rule has a dedicated documentation page with:
 | [SynchronizationPrimitiveRule](Docs/Rules/SynchronizationPrimitiveRule.md) | Manual locks replacing actor isolation |
 | [ThreadRule](Docs/Rules/ThreadRule.md) | `Thread` API bypassing the actor model |
 | [DispatchQueueRule](Docs/Rules/DispatchQueueRule.md) | `DispatchQueue` usage not integrated with actors |
+| [ActorReentrancyRule](Docs/Rules/ActorReentrancyRule.md) | Actor methods awaiting external calls — reentrancy risk |
 | [OperationQueueMainRule](Docs/Rules/OperationQueueMainRule.md) | `OperationQueue.main` instead of `@MainActor` |
 | [CombineRule](Docs/Rules/CombineRule.md) | Combine subscriptions with no actor isolation guarantee |
 | [DispatchGroupRule](Docs/Rules/DispatchGroupRule.md) | `DispatchGroup` instead of `withTaskGroup` |
 | [TaskDetachedRule](Docs/Rules/TaskDetachedRule.md) | `Task.detached` losing actor context |
 | [MainActorMissingRule](Docs/Rules/MainActorMissingRule.md) | UIKit/AppKit subclasses without explicit `@MainActor` |
+| [MainActorRunRule](Docs/Rules/MainActorRunRule.md) | `await MainActor.run { self }` on a non-Sendable class — Swift 6 compile error |
 | [TimerRule](Docs/Rules/TimerRule.md) | Callback `Timer` firing outside actor isolation |
 | [ObservableObjectRule](Docs/Rules/ObservableObjectRule.md) | `ObservableObject` + `@Published` instead of `@Observable` |
 | [CompletionHandlerRule](Docs/Rules/CompletionHandlerRule.md) | `@escaping` completion handlers ready for `async/await` |
 | [PreconcurrencyRule](Docs/Rules/PreconcurrencyRule.md) | `@preconcurrency` suppressing real Swift 6 errors |
 | [NotificationCenterRule](Docs/Rules/NotificationCenterRule.md) | `NotificationCenter` crossing actor boundaries |
-| [MainActorRunRule](Docs/Rules/MainActorRunRule.md) | `await MainActor.run { self }` on a non-Sendable class — Swift 6 compile error |
 | [CheckedContinuationRule](Docs/Rules/CheckedContinuationRule.md) | `withUnsafeContinuation` skipping resume-count validation |
+| [AsyncSequenceRule](Docs/Rules/AsyncSequenceRule.md) | Combine subjects ready for `AsyncStream` migration |
+| [WithUnsafeCurrentTaskRule](Docs/Rules/WithUnsafeCurrentTaskRule.md) | Deprecated low-level task APIs |
 
 ---
 
@@ -287,6 +300,71 @@ Interactive dashboard with:
 gh code-scanning upload-sarif --sarif results.sarif
 ```
 
+### Xcode
+
+Outputs one line per finding in Xcode's diagnostic format. Use as a build phase script to see findings as **inline issue markers** inside Xcode.
+
+```
+/absolute/path/File.swift:22:8: warning: [DispatchQueueRule] Prefer @MainActor or structured concurrency over DispatchQueue.main.async
+/absolute/path/File.swift:45:4: error: [GlobalMutableStateRule] Global variable 'cache' is not concurrency-safe
+```
+
+**Xcode build phase script:**
+```bash
+ANALYZER=".build/release/swift6-analyzer"
+if [ -f "$ANALYZER" ]; then
+  "$ANALYZER" "$SRCROOT" --report xcode
+fi
+```
+
+### Diff
+
+Compares the current run against a saved baseline JSON and shows new regressions, resolved findings, and score deltas per module.
+
+```bash
+# Save a baseline
+.build/release/swift6-analyzer /path/to/MyApp --report json --output baseline.json
+
+# Later: compare against it
+.build/release/swift6-analyzer /path/to/MyApp \
+  --baseline baseline.json \
+  --report diff \
+  --output delta.md
+```
+
+### Multiple formats in one run
+
+Pass `--report` multiple times. Requires `--output <stem>`:
+
+```bash
+.build/release/swift6-analyzer /path/to/MyApp \
+  --report html --report json \
+  --output report
+# writes report.html and report.json
+```
+
+---
+
+## Config File
+
+Create `.swift6-analyzer.json` at your project root for persistent settings (no flags needed on every run):
+
+```json
+{
+  "exclude": ["Mocks", "Generated", "Stubs"],
+  "maxDepth": 3,
+  "includeTests": false,
+  "disabledRules": ["ObservableObjectRule"],
+  "severityOverrides": {
+    "CompletionHandlerRule": "info"
+  },
+  "report": ["html", "json"],
+  "saveBaseline": "baseline.json"
+}
+```
+
+CLI flags always override config file values. Use `--config <path>` to point to a non-default location.
+
 ---
 
 ## Adding a Custom Rule
@@ -347,11 +425,10 @@ struct MyCustomRule: Rule {
 Docs/
 └── Rules/                                ← Per-rule documentation with ❌/✅ examples
     ├── GlobalMutableStateRule.md
-    ├── NonisolatedUnsafeRule.md
-    ├── UncheckedSendableRule.md
-    ├── MainActorRunRule.md
-    ├── CheckedContinuationRule.md
-    └── ... (20 files total)
+    ├── ActorReentrancyRule.md
+    ├── AsyncSequenceRule.md
+    ├── WithUnsafeCurrentTaskRule.md
+    └── ... (23 files total)
 Sources/
 ├── Swift6MigrationAnalyzer/
 │   ├── main.swift                        ← Entry point
@@ -366,35 +443,26 @@ Sources/
     │   ├── ModuleResult.swift
     │   ├── MigrationStatus.swift
     │   ├── FindingComplexity.swift
+    │   ├── BaselineComparator.swift
     │   └── MigrationIndicators.swift
-    ├── Rules/                            ← 19 rule implementations (each links to Docs/Rules/)
+    ├── Rules/                            ← 21 rule implementations (each links to Docs/Rules/)
     │   ├── GlobalMutableStateRule.swift
-    │   ├── NonisolatedUnsafeRule.swift
-    │   ├── UncheckedSendableRule.swift
-    │   ├── SynchronizationPrimitiveRule.swift
-    │   ├── ThreadRule.swift
-    │   ├── DispatchQueueRule.swift
-    │   ├── OperationQueueMainRule.swift
-    │   ├── CombineRule.swift
-    │   ├── DispatchGroupRule.swift
-    │   ├── TaskDetachedRule.swift
-    │   ├── MainActorMissingRule.swift
-    │   ├── MainActorRunRule.swift
-    │   ├── TimerRule.swift
-    │   ├── ObservableObjectRule.swift
-    │   ├── CompletionHandlerRule.swift
-    │   ├── PreconcurrencyRule.swift
-    │   ├── NotificationCenterRule.swift
-    │   └── CheckedContinuationRule.swift
+    │   ├── ActorReentrancyRule.swift
+    │   ├── AsyncSequenceRule.swift
+    │   ├── WithUnsafeCurrentTaskRule.swift
+    │   └── ... (21 files total)
     ├── Reporters/
     │   ├── Reporter.swift
     │   ├── MarkdownReporter.swift
     │   ├── JSONReporter.swift
     │   ├── HTMLReporter.swift
     │   ├── SARIFReporter.swift
+    │   ├── XcodeReporter.swift
+    │   ├── DiffReporter.swift
     │   └── AssistantReporter.swift
     └── Utils/
         ├── FileScanner.swift
+        ├── AnalyzerConfig.swift
         ├── SourceLocationHelper.swift
         ├── PackageManifestParser.swift
         └── SuppressionFilter.swift
