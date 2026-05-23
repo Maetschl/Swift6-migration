@@ -23,20 +23,44 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 ## Requirements
 
-- Swift 6.0+
-- macOS 13+
+- macOS 15+
+- Swift 6.1+ (only needed if building from source)
 
 ---
 
-## Build
+## Installation
+
+### Homebrew (recommended)
 
 ```bash
-git clone <repo-url>
-cd Swift6-migration
-swift build -c release
+brew tap Maetschl/swift6-migration
+brew install swift6-analyzer
 ```
 
-The compiled binary will be at `.build/release/swift6-analyzer`.
+### Mint
+
+```bash
+mint install Maetschl/Swift6-migration@1.2.0
+```
+
+### Manual (download pre-built binary)
+
+Download the latest binary from [GitHub Releases](https://github.com/Maetschl/Swift6-migration/releases), then:
+
+```bash
+unzip swift6-analyzer-*.zip
+chmod +x swift6-analyzer
+sudo mv swift6-analyzer /usr/local/bin/
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/Maetschl/Swift6-migration.git
+cd Swift6-migration
+swift build -c release
+sudo cp .build/release/swift6-analyzer /usr/local/bin/
+```
 
 ---
 
@@ -311,9 +335,9 @@ Outputs one line per finding in Xcode's diagnostic format. Use as a build phase 
 
 **Xcode build phase script:**
 ```bash
-ANALYZER=".build/release/swift6-analyzer"
-if [ -f "$ANALYZER" ]; then
-  "$ANALYZER" "$SRCROOT" --report xcode
+# Requires swift6-analyzer installed via Homebrew or in /usr/local/bin
+if command -v swift6-analyzer &>/dev/null; then
+  swift6-analyzer "$SRCROOT" --report xcode
 fi
 ```
 
