@@ -346,13 +346,52 @@ Outputs one line per finding in Xcode's diagnostic format. Use as a build phase 
 /absolute/path/File.swift:45:4: error: [GlobalMutableStateRule] Global variable 'cache' is not concurrency-safe
 ```
 
-**Xcode build phase script:**
+#### Add as an Xcode build phase
+
+1. In Xcode, select your target → **Build Phases** → **+** → **New Run Script Phase**
+2. Drag the phase **above** "Compile Sources" so warnings appear before compilation
+3. Paste the script:
+
 ```bash
-# Requires swift6-analyzer installed via Homebrew or in /usr/local/bin
 if command -v swift6-analyzer &>/dev/null; then
   swift6-analyzer "$SRCROOT" --report xcode
 fi
 ```
+
+Findings will appear as inline warnings/errors in the Xcode editor on every build.
+
+#### Generate a `.xcresult` bundle
+
+`xcodebuild` automatically captures build-phase output into the result bundle. Once the Run Script phase above is in place:
+
+```bash
+xcodebuild build \
+  -project MyApp.xcodeproj \
+  -scheme MyApp \
+  -destination "platform=macOS,arch=arm64" \
+  -resultBundlePath /path/to/output.xcresult
+```
+
+Open the bundle in Xcode to browse findings in the Issue Navigator:
+
+```bash
+open /path/to/output.xcresult
+```
+
+Or query it from the command line:
+
+```bash
+xcrun xcresulttool get object --legacy \
+  --path /path/to/output.xcresult \
+  --format json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for w in data['issues'].get('warningSummaries', {}).get('_values', []):
+    print(w['message']['_value'])
+"
+```
+
+> **Note:** `.xcresult` is an Apple proprietary format — `swift6-analyzer` cannot generate it directly. The bundle is produced by `xcodebuild`; our tool only needs to emit `file:line:col: warning/error:` lines to stderr during the build phase for them to be captured.
 
 ### Diff
 
