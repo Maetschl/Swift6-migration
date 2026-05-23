@@ -4,9 +4,30 @@ import SwiftSyntax
 
 public struct Analyzer: Sendable {
     private let rules: [any Rule]
+    private let includeTests: Bool
 
-    public init(rules: [any Rule] = Self.defaultRules) {
-        self.rules = rules
+    /// - Parameters:
+    ///   - rules: Full rule set. Defaults to `Self.defaultRules`.
+    ///   - disabledRules: Rule names to skip entirely.
+    ///   - severityOverrides: Map of rule name → override severity string ("error","warning","info").
+    ///   - includeTests: When true, test directories are not excluded from module detection.
+    public init(
+        rules: [any Rule] = Self.defaultRules,
+        disabledRules: [String] = [],
+        severityOverrides: [String: String] = [:],
+        includeTests: Bool = false
+    ) {
+        let active = rules.filter { !disabledRules.contains($0.name) }
+        if severityOverrides.isEmpty {
+            self.rules = active
+        } else {
+            self.rules = active.map { rule in
+                guard let raw = severityOverrides[rule.name],
+                      let sev = Severity(rawValue: raw) else { return rule }
+                return SeverityOverrideRule(wrapped: rule, overrideSeverity: sev) as any Rule
+            }
+        }
+        self.includeTests = includeTests
     }
 
     // MARK: - Rule sets
@@ -31,13 +52,17 @@ public struct Analyzer: Sendable {
             CombineRule(),
             ThreadRule(),
             CheckedContinuationRule(),
+            ActorReentrancyRule(),
+            WithUnsafeCurrentTaskRule(),
+            AsyncSequenceRule(),
         ]
     }
 
     // MARK: - Module-aware analysis
 
-    /// Detects modules recursively up to `maxDepth`, analyzes each, and returns
-    /// results in depth-first tree order with aggregate scores and child lists computed.
+    /// Detects modules recursively up to `maxDepth`, analyzes each **in parallel** using
+    /// `DispatchQueue.concurrentPerform`, and returns results in depth-first tree order
+    /// with aggregate scores and child lists computed.
     ///
     /// - Parameter onProgress: Optional callback for progress events during both detection
     ///   and analysis phases. Receives a human-readable message.
@@ -50,40 +75,49 @@ public struct Analyzer: Sendable {
         onProgress: ((String) -> Void)? = nil,
         onModuleStart: ((String, Int) -> Void)? = nil
     ) -> [ModuleResult] {
-        let moduleScanner = ModuleScanner(fileScanner: fileScanner, maxDepth: maxDepth)
+        let moduleScanner = ModuleScanner(fileScanner: fileScanner, maxDepth: maxDepth, includeTests: includeTests)
         let modules = moduleScanner.detectModules(in: directory, onProgress: onProgress)
 
-        // Step 1 — build raw results using single-pass per file
-        var rawResults: [ModuleResult] = modules.map { module in
+        // Parallel analysis: each module is analyzed independently in a concurrent queue.
+        // Results array is pre-sized; each iteration writes to its own exclusive index.
+        var rawResults = [ModuleResult?](repeating: nil, count: modules.count)
+        let capturedRules = self.rules
+        let lock = NSLock()
+
+        DispatchQueue.concurrentPerform(iterations: modules.count) { index in
+            let module = modules[index]
             onModuleStart?(module.qualifiedName, module.sourceFiles.count)
-            let parsed      = parseAll(files: module.sourceFiles)
-            let findings    = analyzeparsed(parsed)
+            let parsed      = Self.parseAllStatic(files: module.sourceFiles)
+            let findings    = Self.analyzeParsedStatic(parsed, rules: capturedRules)
             let linesOfCode = parsed.reduce(0) { $0 + $1.lineCount }
-            let indicators  = collectIndicatorsParsed(parsed)
+            let indicators  = Self.collectIndicatorsParsedStatic(parsed)
             let score       = FindingComplexity.errorScore(for: findings)
-            let ownStatus   = buildStatus(score: score, findings: findings)
-            return ModuleResult(
+            let ownStatus   = Self.buildStatusStatic(score: score, findings: findings)
+            let result = ModuleResult(
                 name: module.name,
                 qualifiedName: module.qualifiedName,
                 path: module.rootURL.path,
                 status: ownStatus,
-                aggregateStatus: .migrated,          // placeholder — filled below
+                aggregateStatus: .migrated,
                 score: score,
-                aggregateScore: score,               // placeholder — filled below
+                aggregateScore: score,
                 fileCount: module.sourceFiles.count,
                 totalLinesOfCode: linesOfCode,
                 findings: findings,
                 migrationIndicators: indicators,
                 depth: module.depth,
                 parentQualifiedName: module.parentQualifiedName,
-                childQualifiedNames: []              // placeholder — filled below
+                childQualifiedNames: []
             )
+            lock.lock()
+            rawResults[index] = result
+            lock.unlock()
         }
 
         // Step 2 — post-process: compute childQualifiedNames, aggregateScore, aggregateStatus
-        rawResults = computeAggregates(rawResults)
-
-        return rawResults
+        var ordered = rawResults.compactMap { $0 }
+        ordered = computeAggregates(ordered)
+        return ordered
     }
 
     /// Wraps a single file in a one-module result.
@@ -148,9 +182,13 @@ public struct Analyzer: Sendable {
             let childrenAggFindings = children.compactMap { byName[$0]?.aggregateFindings }.reduce(0, +)
             let childrenAggInd      = children.compactMap { byName[$0]?.aggregateMigrationIndicators }
                                               .reduce(MigrationIndicators.empty, +)
+            let childrenAggFiles    = children.compactMap { byName[$0]?.aggregateFileCount }.reduce(0, +)
+            let childrenAggLines    = children.compactMap { byName[$0]?.aggregateLinesOfCode }.reduce(0, +)
             let aggScore    = module.score + childrenAggScore
             let aggFindings = module.findings.count + childrenAggFindings
             let aggInd      = module.migrationIndicators + childrenAggInd
+            let aggFiles    = module.fileCount + childrenAggFiles
+            let aggLines    = module.totalLinesOfCode + childrenAggLines
             let childrenHaveWarnings = children.compactMap { byName[$0]?.aggregateStatus.hasWarnings }.contains(true)
             let aggHasWarnings = module.status.hasWarnings || childrenHaveWarnings
             var aggTags: Set<MigrationTag> = aggScore > 0 ? [.pendingMigration] : [.migrated]
@@ -173,7 +211,9 @@ public struct Analyzer: Sendable {
                 parentQualifiedName: module.parentQualifiedName,
                 childQualifiedNames: children.sorted(),
                 aggregateFindings: aggFindings,
-                aggregateMigrationIndicators: aggInd
+                aggregateMigrationIndicators: aggInd,
+                aggregateFileCount: aggFiles,
+                aggregateLinesOfCode: aggLines
             )
         }
 
@@ -183,6 +223,10 @@ public struct Analyzer: Sendable {
 
 
     private func buildStatus(score: Double, findings: [Finding]) -> MigrationStatus {
+        Self.buildStatusStatic(score: score, findings: findings)
+    }
+
+    private static func buildStatusStatic(score: Double, findings: [Finding]) -> MigrationStatus {
         let hasWarnings = findings.contains { $0.severity == .warning || $0.severity == .info }
         var tags: Set<MigrationTag> = score == 0 ? [.migrated] : [.pendingMigration]
         if hasWarnings { tags.insert(.warnings) }
@@ -193,6 +237,10 @@ public struct Analyzer: Sendable {
 
     /// Reads and parses every file exactly once. Files that cannot be read are skipped.
     func parseAll(files: [URL]) -> [ParsedFile] {
+        Self.parseAllStatic(files: files)
+    }
+
+    private static func parseAllStatic(files: [URL]) -> [ParsedFile] {
         files.compactMap { url in
             guard let source = try? String(contentsOf: url, encoding: .utf8) else {
                 fputs("⚠️  Could not read \(url.path)\n", stderr)
@@ -204,6 +252,10 @@ public struct Analyzer: Sendable {
 
     /// Runs all rules over pre-parsed files (no extra I/O or re-parse).
     func analyzeparsed(_ parsed: [ParsedFile]) -> [Finding] {
+        Self.analyzeParsedStatic(parsed, rules: rules)
+    }
+
+    private static func analyzeParsedStatic(_ parsed: [ParsedFile], rules: [any Rule]) -> [Finding] {
         var findings: [Finding] = []
         for pf in parsed {
             let converter = SourceLocationConverter(fileName: pf.url.path, tree: pf.tree)
@@ -218,6 +270,10 @@ public struct Analyzer: Sendable {
 
     /// Collects migration indicators from pre-parsed files.
     func collectIndicatorsParsed(_ parsed: [ParsedFile]) -> MigrationIndicators {
+        Self.collectIndicatorsParsedStatic(parsed)
+    }
+
+    private static func collectIndicatorsParsedStatic(_ parsed: [ParsedFile]) -> MigrationIndicators {
         var total = MigrationIndicatorCollector()
         for pf in parsed {
             let collector = MigrationIndicatorCollector()
@@ -231,5 +287,29 @@ public struct Analyzer: Sendable {
 
     public func analyze(files: [URL]) -> [Finding] {
         analyzeparsed(parseAll(files: files))
+    }
+}
+
+// MARK: - Severity override wrapper
+
+/// Wraps an existing rule and overrides the severity of every finding it emits.
+private struct SeverityOverrideRule: Rule {
+    let wrapped: any Rule
+    let overrideSeverity: Severity
+
+    var name: String { wrapped.name }
+
+    func analyze(tree: SourceFileSyntax, file: String, locationConverter: SourceLocationConverter) -> [Finding] {
+        wrapped.analyze(tree: tree, file: file, locationConverter: locationConverter)
+            .map { finding in
+                Finding(
+                    file: finding.file,
+                    line: finding.line,
+                    column: finding.column,
+                    severity: overrideSeverity,
+                    rule: finding.rule,
+                    message: finding.message
+                )
+            }
     }
 }

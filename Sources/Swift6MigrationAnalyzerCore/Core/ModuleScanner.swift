@@ -31,10 +31,13 @@ public struct ModuleScanner: Sendable {
     private let fileScanner: FileScanner
     /// Maximum recursion depth. Default is 4.
     public let maxDepth: Int
+    /// When true, directories that look like test targets are not excluded.
+    public let includeTests: Bool
 
-    public init(fileScanner: FileScanner, maxDepth: Int = 4) {
+    public init(fileScanner: FileScanner, maxDepth: Int = 4, includeTests: Bool = false) {
         self.fileScanner = fileScanner
         self.maxDepth = max(1, maxDepth)
+        self.includeTests = includeTests
     }
 
     // MARK: - Public API
@@ -106,9 +109,25 @@ public struct ModuleScanner: Sendable {
 
         var result: [ModuleInfo] = []
         for info in topLevelInfos {
-            result.append(info)                          // parent before children
+            guard depth + 1 < maxDepth else {
+                // At the maxDepth boundary this module will never be recursed into,
+                // so it must own ALL files under its directory (not just the "exclusive"
+                // subset computed during detection, which may have been empty because
+                // subdirectories were speculatively treated as sub-module roots).
+                let allFiles = cache.files(under: info.rootURL)
+                let leaf = ModuleInfo(
+                    name: info.name,
+                    qualifiedName: info.qualifiedName,
+                    rootURL: info.rootURL,
+                    sourceFiles: allFiles,
+                    depth: info.depth,
+                    parentQualifiedName: info.parentQualifiedName
+                )
+                result.append(leaf)
+                continue
+            }
 
-            guard depth + 1 < maxDepth else { continue } // depth limit
+            result.append(info)                          // parent before children
 
             let children = detectRecursive(
                 in: info.rootURL,
@@ -254,6 +273,7 @@ public struct ModuleScanner: Sendable {
 
     /// Returns true if a directory name looks like a test target.
     private func isTestDirectory(_ url: URL) -> Bool {
+        guard !includeTests else { return false }
         let name = url.lastPathComponent
         return name.hasSuffix("Tests") || name.hasSuffix("Test") ||
                name.hasSuffix("SnapshotTests") || name == "Tests"

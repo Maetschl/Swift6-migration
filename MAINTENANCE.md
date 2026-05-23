@@ -20,7 +20,7 @@ swift test
 Record the current test count from the last line of output, for example:
 
 ```
-✔ Test run with 253 tests in 24 suites passed after 0.047 seconds.
+✔ Test run with 420 tests in 38 suites passed after 0.047 seconds.
 ```
 
 > ⚠️ If any tests fail at this point, stop. Fix the regression as an unplanned hotfix commit,
@@ -84,7 +84,7 @@ Minimum expected test coverage map:
 | `Core/ModuleScanner.swift` | `Core/ModuleScannerTests.swift` |
 | `Core/ModuleResult.swift` | *(verify Codable round-trip is tested)* |
 | `Core/Finding.swift` | *(verify severity, location, Codable are tested)* |
-| `Rules/*.swift` (18 rules) | `Rules/*Tests.swift` — one file per rule |
+| `Rules/*.swift` (21 rules) | `Rules/*Tests.swift` — one file per rule |
 | `Reporters/HTMLReporter.swift` | `Reporters/HTMLReporterTests.swift` |
 | `Reporters/MarkdownReporter.swift` | `Reporters/MarkdownReporterTests.swift` |
 | `Reporters/JSONReporter.swift` | `Reporters/JSONReporterTests.swift` |

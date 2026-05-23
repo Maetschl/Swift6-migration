@@ -30,6 +30,9 @@ public struct FindingComplexity: Sendable {
         ("PreconcurrencyRule",           0.4, "@preconcurrency suppresses Swift 6 warnings; each annotation must be audited and removed"),
         ("NotificationCenterRule",       0.4, "Notification observer closures need explicit actor isolation context"),
         ("CheckedContinuationRule",      0.5, "withUnsafeContinuation skips resume-count validation; withCheckedContinuation is the safe Swift 6 alternative"),
+        ("ActorReentrancyRule",          0.7, "Actor reentrancy risk: await on external call while holding actor state — potential data-consistency bug"),
+        ("WithUnsafeCurrentTaskRule",    0.4, "Deprecated low-level task API; replace with structured concurrency (withTaskCancellationHandler, Task.checkCancellation)"),
+        ("AsyncSequenceRule",            0.5, "Combine Subject ready for AsyncStream/AsyncThrowingStream migration — Swift 6 structured concurrency alternative"),
     ]
 
     /// Default weight for unknown rules.
