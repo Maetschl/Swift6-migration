@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build universal binary & publish release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Build arm64
+        run: |
+          swift build -c release --arch arm64
+          cp .build/arm64-apple-macosx/release/swift6-analyzer swift6-analyzer-arm64
+
+      - name: Build x86_64
+        run: |
+          swift build -c release --arch x86_64
+          cp .build/x86_64-apple-macosx/release/swift6-analyzer swift6-analyzer-x86_64
+
+      - name: Create universal binary
+        run: |
+          lipo -create -output swift6-analyzer swift6-analyzer-arm64 swift6-analyzer-x86_64
+          lipo -info swift6-analyzer
+
+      - name: Package zip
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          zip "swift6-analyzer-${VERSION}-macos.zip" swift6-analyzer
+          echo "ZIP_NAME=swift6-analyzer-${VERSION}-macos.zip" >> $GITHUB_ENV
+          echo "SHA256=$(shasum -a 256 swift6-analyzer-${VERSION}-macos.zip | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ github.ref_name }}"
+          body_path: RELEASE_NOTES.md
+          files: ${{ env.ZIP_NAME }}
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print SHA256 (for Homebrew formula)
+        run: |
+          echo "SHA256 for Homebrew formula: ${{ env.SHA256 }}"
+          echo "Update Formula/swift6-analyzer.rb with:"
+          echo "  url: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ env.ZIP_NAME }}"
+          echo "  sha256: ${{ env.SHA256 }}"

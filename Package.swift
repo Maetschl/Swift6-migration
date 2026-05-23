@@ -36,7 +36,7 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "Swift6MigrationAnalyzer",
+            name: "swift6-analyzer",
             dependencies: [
                 "Swift6MigrationAnalyzerCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
