@@ -7,6 +7,16 @@ let package = Package(
     platforms: [
         .macOS(.v15)
     ],
+    products: [
+        .executable(
+            name: "Swift6MigrationAnalyzer",
+            targets: ["Swift6MigrationAnalyzer"]
+        ),
+        .executable(
+            name: "Swift6MigrationAnalyzerMacApp",
+            targets: ["Swift6MigrationAnalyzerMacApp"]
+        )
+    ],
     dependencies: [
         .package(
             url: "https://github.com/swiftlang/swift-syntax.git",
@@ -30,6 +40,12 @@ let package = Package(
             dependencies: [
                 "Swift6MigrationAnalyzerCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
+        ),
+        .executableTarget(
+            name: "Swift6MigrationAnalyzerMacApp",
+            dependencies: [
+                "Swift6MigrationAnalyzerCore"
             ]
         ),
         .testTarget(
