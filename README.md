@@ -36,7 +36,20 @@ cd Swift6-migration
 swift build -c release
 ```
 
-The compiled binary will be at `.build/release/swift6-analyzer`.
+The compiled binary will be at `.build/release/Swift6MigrationAnalyzer`.
+
+### macOS App
+
+Build a local SwiftUI `.app` wrapper:
+
+```bash
+./scripts/build-mac-app.sh
+open ".build/app/Swift 6 Migration Analyzer.app"
+```
+
+The app uses the same analyzer core as the CLI. It lets you choose a Swift
+project or file, run the scan, review modules and findings, and export
+Markdown, JSON, or HTML reports.
 
 ---
 
