@@ -9,8 +9,8 @@ let package = Package(
     ],
     products: [
         .executable(
-            name: "Swift6MigrationAnalyzer",
-            targets: ["Swift6MigrationAnalyzer"]
+            name: "swift6-analyzer",
+            targets: ["swift6-analyzer"]
         ),
         .executable(
             name: "Swift6MigrationAnalyzerMacApp",
