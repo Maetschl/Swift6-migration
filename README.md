@@ -103,6 +103,7 @@ swift6-analyzer <path> [options]
 | `--baseline <file>` | Path to a previous JSON report for diff mode | _(none)_ |
 | `--save-baseline <file>` | Save the current run as a baseline JSON file | _(none)_ |
 | `--verbose` | Print per-phase and per-module timing to stderr | disabled |
+| `--quiet` | Suppress all informational stderr output (module summaries, timing). Errors are still printed. | disabled |
 | `--version` | Print the tool version and exit | — |
 
 ---
@@ -197,6 +198,15 @@ var sharedCache: [String: Any] = [:] // swift6-analyzer: ignore GlobalMutableSta
 ```swift
 // swift6-analyzer: ignore GlobalMutableStateRule
 var sharedCache: [String: Any] = [:]
+```
+
+### Suppress an entire file
+
+Place this comment on the **first line** of a file to suppress all findings in it:
+
+```swift
+// swift6-analyzer: disable-file
+// ... rest of file (e.g. a legacy adapter you don't intend to migrate yet)
 ```
 
 Suppression comments are case-sensitive. The exact prefix `swift6-analyzer: ignore` is required.

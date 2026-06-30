@@ -73,6 +73,35 @@ struct XcodeReporterTests {
         #expect(output.contains(": warning: [DispatchQueueRule] Consider isolating this API"))
     }
 
+    @Test("fix field is appended to output line when present")
+    func fixFieldAppendsToLine() {
+        let finding = Finding(
+            file: "/absolute/path/File.swift",
+            line: 10,
+            column: 1,
+            severity: .error,
+            rule: "GlobalMutableStateRule",
+            message: "Global variable is not concurrency-safe",
+            fix: "Annotate with @MainActor or wrap in an actor"
+        )
+        let output = reporter.generate(modules: [makeModuleResult(name: "Core", findings: [finding])], projectName: "MyProject")
+        #expect(output.contains("Fix: Annotate with @MainActor or wrap in an actor"))
+    }
+
+    @Test("fix field is not appended when nil")
+    func fixFieldOmittedWhenNil() {
+        let finding = Finding(
+            file: "/absolute/path/File.swift",
+            line: 10,
+            column: 1,
+            severity: .error,
+            rule: "GlobalMutableStateRule",
+            message: "Global variable is not concurrency-safe"
+        )
+        let output = reporter.generate(modules: [makeModuleResult(name: "Core", findings: [finding])], projectName: "MyProject")
+        #expect(!output.contains("Fix:"))
+    }
+
     @Test("Rule name is prefixed in brackets")
     func ruleNamePrefix() {
         let finding = Finding(

@@ -269,7 +269,7 @@ OPTIONS:
   --baseline <file>         Path to a previous JSON report for diff mode
   --save-baseline <file>    Save the current run as a baseline JSON file
   --verbose                 Print per-phase and per-module timing to stderr
-  --version                 Print tool version (1.2.0) and exit
+  --version                 Print tool version (1.3.0) and exit
 
 BUILT-IN EXCLUDED DIRECTORIES (always skipped unless --include-tests):
   Pods, Carthage, DerivedData, build, .build, .git

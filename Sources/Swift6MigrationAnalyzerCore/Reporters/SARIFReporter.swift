@@ -167,7 +167,7 @@ public struct SARIFReporter: Reporter {
                     tool: Tool(driver: Driver(
                         name: "swift6-analyzer",
                         version: ToolVersion.current,
-                        informationUri: "https://github.com/users/swift6-migration",
+                        informationUri: "https://github.com/Maetschl/Swift6-migration",
                         rules: ruleDescriptors
                     )),
                     results: results,
@@ -211,7 +211,7 @@ public struct SARIFReporter: Reporter {
             id: id,
             name: id,
             shortDescription: Message(text: rationale),
-            helpUri: "https://github.com/users/swift6-migration/blob/main/Docs/Rules/\(id).md",
+            helpUri: "https://github.com/Maetschl/Swift6-migration/blob/main/Docs/Rules/\(id).md",
             properties: RuleProperties(
                 tags: ["swift6", "concurrency", "migration"],
                 precision: "high",

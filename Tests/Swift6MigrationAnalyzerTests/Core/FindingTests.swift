@@ -97,4 +97,49 @@ struct FindingTests {
         #expect(decoded[0].rule == "RuleA")
         #expect(decoded[1].severity == .warning)
     }
+
+    // MARK: - fix field
+
+    @Test("Default fix is nil when not supplied")
+    func defaultFixIsNil() {
+        let f = Finding(file: "F.swift", line: 1, severity: .error, rule: "R", message: "m")
+        #expect(f.fix == nil)
+    }
+
+    @Test("fix value is stored correctly when supplied")
+    func fixValueStored() {
+        let f = Finding(file: "F.swift", line: 1, severity: .error, rule: "R", message: "m",
+                        fix: "Replace with @MainActor")
+        #expect(f.fix == "Replace with @MainActor")
+    }
+
+    @Test("Codable round-trip preserves fix when present")
+    func codableRoundTripWithFix() throws {
+        let original = Finding(file: "Auth.swift", line: 5, severity: .warning,
+                               rule: "DispatchQueueRule", message: "Use @MainActor",
+                               fix: "Replace DispatchQueue.main.async with @MainActor annotation")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(Finding.self, from: data)
+        #expect(decoded.fix == original.fix)
+    }
+
+    @Test("Codable round-trip preserves nil fix")
+    func codableRoundTripNilFix() throws {
+        let original = Finding(file: "F.swift", line: 1, severity: .error, rule: "R", message: "m")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(Finding.self, from: data)
+        #expect(decoded.fix == nil)
+    }
+
+    @Test("Decoding JSON without fix field sets fix to nil (backward compatibility)")
+    func decodingWithoutFixFieldIsNil() throws {
+        // JSON produced before the fix field was added — must still decode cleanly
+        let json = """
+        {"file":"F.swift","line":1,"column":0,"severity":"error","rule":"R","message":"m"}
+        """
+        let data = try #require(json.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(Finding.self, from: data)
+        #expect(decoded.fix == nil)
+        #expect(decoded.file == "F.swift")
+    }
 }
