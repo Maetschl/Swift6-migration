@@ -88,58 +88,58 @@ struct AnalyzerTests {
     // MARK: - Module-level analysis
 
     @Test("analyzeModules returns one module for a flat project")
-    func flatProjectHasOneModule() throws {
+    func flatProjectHasOneModule() async throws {
         let dir = try writeTempDir(name: "FlatProject", files: [
             "ViewA.swift": "let x = 1",
             "ViewB.swift": "let y = 2"
         ])
         let scanner = FileScanner()
-        let results = analyzer.analyzeModules(in: dir, fileScanner: scanner)
+        let results = await analyzer.analyzeModules(in: dir, fileScanner: scanner)
         #expect(results.count == 1)
         #expect(results[0].fileCount == 2)
     }
 
     @Test("analyzeModules returns one module per subdirectory for modular project")
-    func modularProjectHasOneModulePerDirectory() throws {
+    func modularProjectHasOneModulePerDirectory() async throws {
         let dir = try writeTempDir(name: "ModularProject", files: [
             "Core/Model.swift": "struct Model { }",
             "UI/View.swift": "let x = 1",
             "Network/Client.swift": "let y = 2"
         ])
         let scanner = FileScanner()
-        let results = analyzer.analyzeModules(in: dir, fileScanner: scanner)
+        let results = await analyzer.analyzeModules(in: dir, fileScanner: scanner)
         #expect(results.count == 3)
     }
 
     @Test("Module with no findings has status Migrated")
-    func cleanModuleIsMigrated() throws {
+    func cleanModuleIsMigrated() async throws {
         let dir = try writeTempDir(name: "CleanProject", files: [
             "Code.swift": "func hello() async { }"
         ])
         let scanner = FileScanner()
-        let results = analyzer.analyzeModules(in: dir, fileScanner: scanner)
+        let results = await analyzer.analyzeModules(in: dir, fileScanner: scanner)
         #expect(results.allSatisfy { $0.status == .migrated })
     }
 
     @Test("Module with findings has status Pending Migration")
-    func problematicModuleIsPending() throws {
+    func problematicModuleIsPending() async throws {
         let dir = try writeTempDir(name: "BadProject", files: [
             "Code.swift": "var globalCounter = 0"
         ])
         let scanner = FileScanner()
-        let results = analyzer.analyzeModules(in: dir, fileScanner: scanner)
+        let results = await analyzer.analyzeModules(in: dir, fileScanner: scanner)
         #expect(results.allSatisfy { $0.status == .pendingMigration })
     }
 
     @Test("Results are sorted alphabetically by module name")
-    func resultsAreSortedByName() throws {
+    func resultsAreSortedByName() async throws {
         let dir = try writeTempDir(name: "SortedProject", files: [
             "Zebra/Z.swift": "let z = 1",
             "Alpha/A.swift": "let a = 1",
             "Middle/M.swift": "let m = 1"
         ])
         let scanner = FileScanner()
-        let results = analyzer.analyzeModules(in: dir, fileScanner: scanner)
+        let results = await analyzer.analyzeModules(in: dir, fileScanner: scanner)
         let names = results.map(\.name)
         #expect(names == names.sorted())
     }
@@ -186,7 +186,7 @@ struct AnalyzerTests {
 extension AnalyzerTests {
 
     @Test("Container module aggregateScore equals sum of its children scores")
-    func containerAggregateScoreIncludesChildren() throws {
+    func containerAggregateScoreIncludesChildren() async throws {
         // Need 2+ top-level dirs so the scanner detects them as separate modules
         let root = try makeTempDir("AggScore", structure: [
             "FeatureA/Sub1/File1.swift": "var global = 0",   // GlobalMutableState → weight 0.9
@@ -194,7 +194,7 @@ extension AnalyzerTests {
             "FeatureB/Core.swift": "let b = 3"               // clean — sibling at depth 0
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: FileScanner())
         let featureA = modules.first { $0.name == "FeatureA" }
         let sub1     = modules.first { $0.name == "Sub1" }
 
@@ -205,14 +205,14 @@ extension AnalyzerTests {
     }
 
     @Test("Container module aggregateStatus is pendingMigration when any child is pending")
-    func containerAggregateStatusPendingWhenChildPending() throws {
+    func containerAggregateStatusPendingWhenChildPending() async throws {
         let root = try makeTempDir("AggStatus", structure: [
             "FeatureA/Sub1/Bad.swift": "var globalVar = 0",   // will trigger GlobalMutableStateRule
             "FeatureA/Sub2/Good.swift": "let clean = 1",
             "FeatureB/Core.swift": "let b = 3"                // sibling to force multi-module detection
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: FileScanner())
         let featureA = modules.first { $0.name == "FeatureA" }
 
         #expect(featureA?.status == .migrated)                 // no own direct findings
@@ -220,27 +220,27 @@ extension AnalyzerTests {
     }
 
     @Test("childQualifiedNames lists direct children only")
-    func childQualifiedNamesDirectOnly() throws {
+    func childQualifiedNamesDirectOnly() async throws {
         let root = try makeTempDir("ChildNames", structure: [
             "FeatureA/Sub1/S1.swift": "let s1 = 1",
             "FeatureA/Sub2/S2.swift": "let s2 = 2",
             "FeatureB/Core.swift": "let b = 3"
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: FileScanner())
         let featureA = modules.first { $0.name == "FeatureA" }
 
         #expect(featureA?.childQualifiedNames.sorted() == ["FeatureA/Sub1", "FeatureA/Sub2"])
     }
 
     @Test("Leaf module has empty childQualifiedNames")
-    func leafModuleHasNoChildren() throws {
+    func leafModuleHasNoChildren() async throws {
         let root = try makeTempDir("LeafNoChildren", structure: [
             "Core/File.swift": "let x = 1",
             "UI/View.swift": "struct V { }"    // sibling needed to trigger module detection
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: FileScanner())
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: FileScanner())
         let core = modules.first { $0.name == "Core" }
         #expect(core?.childQualifiedNames.isEmpty == true)
     }

@@ -166,7 +166,7 @@ public struct SARIFReporter: Reporter {
                 Run(
                     tool: Tool(driver: Driver(
                         name: "swift6-analyzer",
-                        version: "1.2.0",
+                        version: ToolVersion.current,
                         informationUri: "https://github.com/users/swift6-migration",
                         rules: ruleDescriptors
                     )),

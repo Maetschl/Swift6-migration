@@ -52,7 +52,7 @@ public struct FindingComplexity: Sendable {
     /// Computes the total migration score for all findings regardless of severity.
     /// - Note: Prefer `errorScore(for:)` in all production scoring paths — this method
     ///   is preserved for internal use and testing.
-    public static func score(for findings: [Finding]) -> Double {
+    static func score(for findings: [Finding]) -> Double {
         findings.reduce(0.0) { accumulated, finding in
             accumulated + weight(for: finding.rule)
         }

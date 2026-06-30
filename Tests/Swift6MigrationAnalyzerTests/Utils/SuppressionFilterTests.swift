@@ -146,4 +146,46 @@ struct SuppressionFilterTests {
         let result = SuppressionFilter.filter(findings: [], source: "var x = 0 // swift6-analyzer: ignore")
         #expect(result.isEmpty)
     }
+
+    // MARK: - Whole-file suppression (disable-file)
+
+    @Test("Suppresses all findings when first line has 'swift6-analyzer: disable-file'")
+    func suppressesEntireFileWithDisableFile() {
+        let source = """
+        // swift6-analyzer: disable-file
+        var x = 0
+        var y = 0
+        """
+        let f1 = makeFinding(file: "T.swift", line: 2, rule: "GlobalMutableStateRule")
+        let f2 = makeFinding(file: "T.swift", line: 3, rule: "GlobalMutableStateRule")
+        let result = SuppressionFilter.filter(findings: [f1, f2], source: source)
+        #expect(result.isEmpty)
+    }
+
+    @Test("Does not suppress when disable-file marker is NOT on the first line")
+    func doesNotSuppressDisableFileOnNonFirstLine() {
+        let source = """
+        var x = 0
+        // swift6-analyzer: disable-file
+        var y = 0
+        """
+        let finding = makeFinding(file: "T.swift", line: 1, rule: "GlobalMutableStateRule")
+        let result = SuppressionFilter.filter(findings: [finding], source: source)
+        #expect(result.count == 1)
+    }
+
+    @Test("disable-file works even when there is only one finding")
+    func disableFileSingleFinding() {
+        let source = "// swift6-analyzer: disable-file\nvar x = 0"
+        let finding = makeFinding(file: "T.swift", line: 2, rule: "GlobalMutableStateRule")
+        let result = SuppressionFilter.filter(findings: [finding], source: source)
+        #expect(result.isEmpty)
+    }
+
+    @Test("disable-file returns empty for an empty findings list")
+    func disableFileEmptyFindings() {
+        let source = "// swift6-analyzer: disable-file\nvar x = 0"
+        let result = SuppressionFilter.filter(findings: [], source: source)
+        #expect(result.isEmpty)
+    }
 }

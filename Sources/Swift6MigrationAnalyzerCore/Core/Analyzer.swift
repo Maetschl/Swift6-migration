@@ -61,8 +61,8 @@ public struct Analyzer: Sendable {
     // MARK: - Module-aware analysis
 
     /// Detects modules recursively up to `maxDepth`, analyzes each **in parallel** using
-    /// `DispatchQueue.concurrentPerform`, and returns results in depth-first tree order
-    /// with aggregate scores and child lists computed.
+    /// Swift structured concurrency (`withTaskGroup`), and returns results in depth-first
+    /// tree order with aggregate scores and child lists computed.
     ///
     /// - Parameter onProgress: Optional callback for progress events during both detection
     ///   and analysis phases. Receives a human-readable message.
@@ -72,50 +72,56 @@ public struct Analyzer: Sendable {
         in directory: URL,
         fileScanner: FileScanner,
         maxDepth: Int = 4,
-        onProgress: ((String) -> Void)? = nil,
-        onModuleStart: ((String, Int) -> Void)? = nil
-    ) -> [ModuleResult] {
+        onProgress: (@Sendable (String) -> Void)? = nil,
+        onModuleStart: (@Sendable (String, Int) -> Void)? = nil
+    ) async -> [ModuleResult] {
         let moduleScanner = ModuleScanner(fileScanner: fileScanner, maxDepth: maxDepth, includeTests: includeTests)
         let modules = moduleScanner.detectModules(in: directory, onProgress: onProgress)
 
-        // Parallel analysis: each module is analyzed independently in a concurrent queue.
-        // Results array is pre-sized; each iteration writes to its own exclusive index.
-        var rawResults = [ModuleResult?](repeating: nil, count: modules.count)
+        // Parallel analysis using Swift structured concurrency.
+        // Each task returns its (originalIndex, ModuleResult) so we can restore original order.
         let capturedRules = self.rules
-        let lock = NSLock()
-
-        DispatchQueue.concurrentPerform(iterations: modules.count) { index in
-            let module = modules[index]
-            onModuleStart?(module.qualifiedName, module.sourceFiles.count)
-            let parsed      = Self.parseAllStatic(files: module.sourceFiles)
-            let findings    = Self.analyzeParsedStatic(parsed, rules: capturedRules)
-            let linesOfCode = parsed.reduce(0) { $0 + $1.lineCount }
-            let indicators  = Self.collectIndicatorsParsedStatic(parsed)
-            let score       = FindingComplexity.errorScore(for: findings)
-            let ownStatus   = Self.buildStatusStatic(score: score, findings: findings)
-            let result = ModuleResult(
-                name: module.name,
-                qualifiedName: module.qualifiedName,
-                path: module.rootURL.path,
-                status: ownStatus,
-                aggregateStatus: .migrated,
-                score: score,
-                aggregateScore: score,
-                fileCount: module.sourceFiles.count,
-                totalLinesOfCode: linesOfCode,
-                findings: findings,
-                migrationIndicators: indicators,
-                depth: module.depth,
-                parentQualifiedName: module.parentQualifiedName,
-                childQualifiedNames: []
-            )
-            lock.lock()
-            rawResults[index] = result
-            lock.unlock()
+        var indexedResults: [(Int, ModuleResult)] = await withTaskGroup(
+            of: (Int, ModuleResult).self
+        ) { group in
+            for (index, module) in modules.enumerated() {
+                group.addTask {
+                    onModuleStart?(module.qualifiedName, module.sourceFiles.count)
+                    let parsed      = Self.parseAllStatic(files: module.sourceFiles)
+                    let findings    = Self.analyzeParsedStatic(parsed, rules: capturedRules)
+                    let linesOfCode = parsed.reduce(0) { $0 + $1.lineCount }
+                    let indicators  = Self.collectIndicatorsParsedStatic(parsed)
+                    let score       = FindingComplexity.errorScore(for: findings)
+                    let ownStatus   = Self.buildStatusStatic(score: score, findings: findings)
+                    let result = ModuleResult(
+                        name: module.name,
+                        qualifiedName: module.qualifiedName,
+                        path: module.rootURL.path,
+                        status: ownStatus,
+                        aggregateStatus: .migrated,
+                        score: score,
+                        aggregateScore: score,
+                        fileCount: module.sourceFiles.count,
+                        totalLinesOfCode: linesOfCode,
+                        findings: findings,
+                        migrationIndicators: indicators,
+                        depth: module.depth,
+                        parentQualifiedName: module.parentQualifiedName,
+                        childQualifiedNames: []
+                    )
+                    return (index, result)
+                }
+            }
+            var collected: [(Int, ModuleResult)] = []
+            for await pair in group { collected.append(pair) }
+            return collected
         }
 
+        // Restore depth-first order (same as the original module detection order).
+        indexedResults.sort { $0.0 < $1.0 }
+
         // Step 2 — post-process: compute childQualifiedNames, aggregateScore, aggregateStatus
-        var ordered = rawResults.compactMap { $0 }
+        var ordered = indexedResults.map(\.1)
         ordered = computeAggregates(ordered)
         return ordered
     }
@@ -123,7 +129,7 @@ public struct Analyzer: Sendable {
     /// Wraps a single file in a one-module result.
     public func analyzeAsModule(file: URL) -> ModuleResult {
         guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-            print("⚠️  Could not read \(file.path)")
+            fputs("⚠️  Could not read \(file.path)\n", stderr)
             return ModuleResult(
                 name: file.lastPathComponent, qualifiedName: file.lastPathComponent,
                 path: file.path, status: .migrated, aggregateStatus: .migrated,
@@ -133,7 +139,7 @@ public struct Analyzer: Sendable {
             )
         }
         let parsed      = ParsedFile(url: file, source: source)
-        let findings    = analyzeparsed([parsed])
+        let findings    = analyzeParsed([parsed])
         let indicators  = collectIndicatorsParsed([parsed])
         let score       = FindingComplexity.errorScore(for: findings)
         let name        = file.deletingPathExtension().lastPathComponent
@@ -251,7 +257,7 @@ public struct Analyzer: Sendable {
     }
 
     /// Runs all rules over pre-parsed files (no extra I/O or re-parse).
-    func analyzeparsed(_ parsed: [ParsedFile]) -> [Finding] {
+    func analyzeParsed(_ parsed: [ParsedFile]) -> [Finding] {
         Self.analyzeParsedStatic(parsed, rules: rules)
     }
 
@@ -274,19 +280,17 @@ public struct Analyzer: Sendable {
     }
 
     private static func collectIndicatorsParsedStatic(_ parsed: [ParsedFile]) -> MigrationIndicators {
-        var total = MigrationIndicatorCollector()
-        for pf in parsed {
+        parsed.reduce(MigrationIndicators.empty) { accumulated, pf in
             let collector = MigrationIndicatorCollector()
             collector.walk(pf.tree)
-            total = MigrationIndicatorCollector.merge(total, collector)
+            return accumulated + collector.build()
         }
-        return total.build()
     }
 
     // MARK: - Legacy flat helpers (kept for external callers / tests)
 
     public func analyze(files: [URL]) -> [Finding] {
-        analyzeparsed(parseAll(files: files))
+        analyzeParsed(parseAll(files: files))
     }
 }
 

@@ -236,45 +236,45 @@ struct ModuleScannerTests {
     }
 
     @Test("analyzeModules returns one module for a flat project")
-    func analyzeModulesFlat() throws {
+    func analyzeModulesFlat() async throws {
         let root = try makeTempDir("FlatAnalyze", structure: [
             "App.swift": "var x = 0",
             "Model.swift": "struct M { }"
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: fileScanner)
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: fileScanner)
         #expect(modules.count == 1)
     }
 
     @Test("analyzeModules returns one module per subdirectory for modular project")
-    func analyzeModulesModular() throws {
+    func analyzeModulesModular() async throws {
         let root = try makeTempDir("ModularAnalyze", structure: [
             "Core/C.swift": "struct C { }",
             "UI/V.swift": "struct V { }"
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: fileScanner)
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: fileScanner)
         let names = modules.map(\.name).sorted()
         #expect(names == ["Core", "UI"])
     }
 
     @Test("Module with findings has status Pending Migration")
-    func moduleWithFindingsIsPending() throws {
+    func moduleWithFindingsIsPending() async throws {
         let root = try makeTempDir("PendingStatus", structure: [
             "Feature/ViewModel.swift": "var globalState = 0"
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: fileScanner)
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: fileScanner)
         #expect(modules.first?.status == .pendingMigration)
     }
 
     @Test("Module with no findings has status Migrated")
-    func moduleWithNoFindingsIsMigrated() throws {
+    func moduleWithNoFindingsIsMigrated() async throws {
         let root = try makeTempDir("MigratedStatus", structure: [
             "Feature/Clean.swift": "let x = 1"
         ])
         let analyzer = Analyzer()
-        let modules = analyzer.analyzeModules(in: root, fileScanner: fileScanner)
+        let modules = await analyzer.analyzeModules(in: root, fileScanner: fileScanner)
         #expect(modules.first?.status == .migrated)
     }
 
