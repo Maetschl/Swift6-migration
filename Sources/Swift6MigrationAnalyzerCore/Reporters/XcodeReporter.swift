@@ -24,7 +24,11 @@ public struct XcodeReporter: Reporter {
     }
 
     private static func format(_ finding: Finding) -> String {
-        "\(finding.file):\(finding.line):\(finding.column): \(severityLabel(for: finding.severity)): [\(finding.rule)] \(finding.message)"
+        var line = "\(finding.file):\(finding.line):\(finding.column): \(severityLabel(for: finding.severity)): [\(finding.rule)] \(finding.message)"
+        if let fix = finding.fix {
+            line += " Fix: \(fix)"
+        }
+        return line
     }
 
     private static func severityLabel(for severity: Severity) -> String {

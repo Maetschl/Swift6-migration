@@ -20,7 +20,7 @@ swift test
 Record the current test count from the last line of output, for example:
 
 ```
-✔ Test run with 420 tests in 38 suites passed after 0.047 seconds.
+✔ Test run with 424 tests in 38 suites passed after 0.047 seconds.
 ```
 
 > ⚠️ If any tests fail at this point, stop. Fix the regression as an unplanned hotfix commit,

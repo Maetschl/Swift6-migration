@@ -221,4 +221,30 @@ struct MarkdownReporterTests {
         #expect(output.contains("ForceTryRule"))
         #expect(output.contains("ForceUnwrapRule"))
     }
+
+    // MARK: - fix field rendering
+
+    @Test("Finding with fix shows '💡 Fix:' blockquote in module findings")
+    func findingWithFixShowsFixBlockquote() {
+        let finding = Finding(
+            file: "Test.swift", line: 1, severity: .error,
+            rule: "GlobalMutableStateRule", message: "Not concurrency-safe",
+            fix: "Annotate with @MainActor"
+        )
+        let modules = [makeModuleResult(name: "Core", findings: [finding])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(output.contains("💡 **Fix:**"))
+        #expect(output.contains("Annotate with @MainActor"))
+    }
+
+    @Test("Finding without fix does not show '💡 Fix:' in module findings")
+    func findingWithoutFixHasNoFixBlockquote() {
+        let finding = Finding(
+            file: "Test.swift", line: 1, severity: .error,
+            rule: "GlobalMutableStateRule", message: "Not concurrency-safe"
+        )
+        let modules = [makeModuleResult(name: "Core", findings: [finding])]
+        let output = reporter.generate(modules: modules, projectName: "P")
+        #expect(!output.contains("💡 **Fix:**"))
+    }
 }

@@ -33,7 +33,6 @@ public struct MarkdownReporter: Reporter {
         lines.append("| **Status** | \(projectStatus.badgesMarkdown) |")
         lines.append("| **Subtree Score** | `\(String(format: "%.2f", projectScore))` |")
         lines.append("| **Modules Migrated** | \(migratedCount) / \(modules.count) (\(migratedPct)%) |")
-        lines.append("| **Modules Migrated** | \(migratedCount) / \(modules.count) (\(migratedPct)%) |")
         lines.append("| **Modules** | \(modules.count) |")
         lines.append("| **Max Scan Depth** | \(maxDepthFound) |")
         lines.append("| **Total Findings** | \(allFindings.count) |")
@@ -164,7 +163,11 @@ public struct MarkdownReporter: Reporter {
                 lines.append("\(ruleHeading) \(ruleName) _(weight: \(weight))_")
                 lines.append("")
                 for finding in ruleFindings {
-                    lines.append("- \(finding.severity.badge) `\(finding.location)` — \(finding.message)")
+                    var entry = "- \(finding.severity.badge) `\(finding.location)` — \(finding.message)"
+                    if let fix = finding.fix {
+                        entry += "\n  > 💡 **Fix:** \(fix)"
+                    }
+                    lines.append(entry)
                 }
                 lines.append("")
             }

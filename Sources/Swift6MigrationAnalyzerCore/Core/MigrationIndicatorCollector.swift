@@ -61,19 +61,4 @@ final class MigrationIndicatorCollector: SyntaxVisitor {
             sendableConformanceCount: sendableConformanceCount
         )
     }
-
-    // MARK: - Merge helper (used to combine results across multiple files)
-
-    static func merge(
-        _ a: MigrationIndicatorCollector,
-        _ b: MigrationIndicatorCollector
-    ) -> MigrationIndicatorCollector {
-        let result = MigrationIndicatorCollector()
-        result.actorDeclarationCount    = a.actorDeclarationCount    + b.actorDeclarationCount
-        result.mainActorAnnotationCount = a.mainActorAnnotationCount + b.mainActorAnnotationCount
-        result.asyncFunctionCount       = a.asyncFunctionCount       + b.asyncFunctionCount
-        result.awaitUsageCount          = a.awaitUsageCount          + b.awaitUsageCount
-        result.sendableConformanceCount = a.sendableConformanceCount + b.sendableConformanceCount
-        return result
-    }
 }

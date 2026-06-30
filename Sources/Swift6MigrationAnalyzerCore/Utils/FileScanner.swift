@@ -34,9 +34,7 @@ public struct FileScanner: Sendable {
         for case let url as URL in enumerator {
             let pathComponents = url.pathComponents
             if pathComponents.contains(where: { component in
-                exclusions.contains(where: { excl in
-                    component == excl || component.contains(excl)
-                })
+                exclusions.contains { $0 == component }
             }) {
                 if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                     enumerator.skipDescendants()

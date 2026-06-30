@@ -23,20 +23,44 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 
 ## Requirements
 
-- Swift 6.0+
-- macOS 13+
+- macOS 15+
+- Swift 6.1+ (only needed if building from source)
 
 ---
 
-## Build
+## Installation
+
+### Homebrew (recommended)
 
 ```bash
-git clone <repo-url>
-cd Swift6-migration
-swift build -c release
+brew tap Maetschl/swift6-migration
+brew install swift6-analyzer
 ```
 
-The compiled binary will be at `.build/release/Swift6MigrationAnalyzer`.
+### Mint
+
+```bash
+mint install Maetschl/Swift6-migration@1.2.0
+```
+
+### Manual (download pre-built binary)
+
+Download the latest binary from [GitHub Releases](https://github.com/Maetschl/Swift6-migration/releases), then:
+
+```bash
+unzip swift6-analyzer-*.zip
+chmod +x swift6-analyzer
+sudo mv swift6-analyzer /usr/local/bin/
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/Maetschl/Swift6-migration.git
+cd Swift6-migration
+swift build -c release
+sudo cp .build/release/swift6-analyzer /usr/local/bin/
+```
 
 ### macOS App
 
@@ -79,6 +103,7 @@ swift6-analyzer <path> [options]
 | `--baseline <file>` | Path to a previous JSON report for diff mode | _(none)_ |
 | `--save-baseline <file>` | Save the current run as a baseline JSON file | _(none)_ |
 | `--verbose` | Print per-phase and per-module timing to stderr | disabled |
+| `--quiet` | Suppress all informational stderr output (module summaries, timing). Errors are still printed. | disabled |
 | `--version` | Print the tool version and exit | — |
 
 ---
@@ -173,6 +198,15 @@ var sharedCache: [String: Any] = [:] // swift6-analyzer: ignore GlobalMutableSta
 ```swift
 // swift6-analyzer: ignore GlobalMutableStateRule
 var sharedCache: [String: Any] = [:]
+```
+
+### Suppress an entire file
+
+Place this comment on the **first line** of a file to suppress all findings in it:
+
+```swift
+// swift6-analyzer: disable-file
+// ... rest of file (e.g. a legacy adapter you don't intend to migrate yet)
 ```
 
 Suppression comments are case-sensitive. The exact prefix `swift6-analyzer: ignore` is required.
@@ -322,13 +356,52 @@ Outputs one line per finding in Xcode's diagnostic format. Use as a build phase 
 /absolute/path/File.swift:45:4: error: [GlobalMutableStateRule] Global variable 'cache' is not concurrency-safe
 ```
 
-**Xcode build phase script:**
+#### Add as an Xcode build phase
+
+1. In Xcode, select your target → **Build Phases** → **+** → **New Run Script Phase**
+2. Drag the phase **above** "Compile Sources" so warnings appear before compilation
+3. Paste the script:
+
 ```bash
-ANALYZER=".build/release/swift6-analyzer"
-if [ -f "$ANALYZER" ]; then
-  "$ANALYZER" "$SRCROOT" --report xcode
+if command -v swift6-analyzer &>/dev/null; then
+  swift6-analyzer "$SRCROOT" --report xcode
 fi
 ```
+
+Findings will appear as inline warnings/errors in the Xcode editor on every build.
+
+#### Generate a `.xcresult` bundle
+
+`xcodebuild` automatically captures build-phase output into the result bundle. Once the Run Script phase above is in place:
+
+```bash
+xcodebuild build \
+  -project MyApp.xcodeproj \
+  -scheme MyApp \
+  -destination "platform=macOS,arch=arm64" \
+  -resultBundlePath /path/to/output.xcresult
+```
+
+Open the bundle in Xcode to browse findings in the Issue Navigator:
+
+```bash
+open /path/to/output.xcresult
+```
+
+Or query it from the command line:
+
+```bash
+xcrun xcresulttool get object --legacy \
+  --path /path/to/output.xcresult \
+  --format json | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for w in data['issues'].get('warningSummaries', {}).get('_values', []):
+    print(w['message']['_value'])
+"
+```
+
+> **Note:** `.xcresult` is an Apple proprietary format — `swift6-analyzer` cannot generate it directly. The bundle is produced by `xcodebuild`; our tool only needs to emit `file:line:col: warning/error:` lines to stderr during the build phase for them to be captured.
 
 ### Diff
 

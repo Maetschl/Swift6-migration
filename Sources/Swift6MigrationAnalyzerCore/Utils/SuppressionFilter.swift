@@ -21,12 +21,21 @@
 /// var sharedState = 0
 /// ```
 ///
+/// ### Suppress the entire file
+/// Place this comment on the **first line** of the file to suppress all findings:
+/// ```swift
+/// // swift6-analyzer: disable-file
+/// ```
+///
 /// Suppression comments are case-sensitive and must start with the exact prefix
 /// `swift6-analyzer: ignore` (with a colon and a space).
 public struct SuppressionFilter: Sendable {
 
-    /// Marker prefix that all suppression comments must begin with.
+    /// Marker prefix that all per-line suppression comments must begin with.
     static let prefix = "swift6-analyzer: ignore"
+
+    /// Marker for whole-file suppression — must appear on the first line of the file.
+    static let disableFileMarker = "swift6-analyzer: disable-file"
 
     /// Filters out findings that are suppressed by an inline comment in the source.
     ///
@@ -39,6 +48,12 @@ public struct SuppressionFilter: Sendable {
 
         // Build a line-number → source-line lookup (1-indexed to match findings)
         let lines = source.components(separatedBy: "\n")
+
+        // Whole-file suppression: if the first line contains the disable-file marker,
+        // suppress every finding in this file.
+        if let firstLine = lines.first, firstLine.contains(disableFileMarker) {
+            return []
+        }
 
         return findings.filter { finding in
             !isSuppressed(finding: finding, lines: lines)

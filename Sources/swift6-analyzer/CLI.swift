@@ -8,7 +8,7 @@ private func elapsed(since start: Date) -> String {
     String(format: "%.2fs", Date().timeIntervalSince(start))
 }
 
-struct Swift6MigrationAnalyzerCommand: ParsableCommand {
+struct Swift6MigrationAnalyzerCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swift6-analyzer",
         abstract: "Analyze Swift 5 codebases for Swift 6 migration issues.",
@@ -25,7 +25,7 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         All 21 built-in rules cover strict concurrency patterns (global mutable state,
         actor isolation, DispatchQueue, ObservableObject, NotificationCenter, etc.).
         """,
-        version: "1.2.0"
+        version: ToolVersion.current
     )
 
     @Argument(help: "Path to the Swift project directory or file to analyze.")
@@ -64,7 +64,10 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
     @Flag(name: .long, help: "Exit with code 1 if any error-severity findings are detected.")
     var failOnErrors: Bool = false
 
-    mutating func run() throws {
+    @Flag(name: .long, help: "Suppress all informational stderr output (module summaries, timing). Errors are still printed.")
+    var quiet: Bool = false
+
+    mutating func run() async throws {
         let totalStart = Date()
         let targetURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
         let fm = FileManager.default
@@ -111,15 +114,15 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         let projectName: String
 
         if isDirectory.boolValue {
-            fputs("🔍 Detecting modules in \(targetURL.path) (max depth: \(resolvedDepth))...\n", stderr)
+            if !quiet { fputs("🔍 Detecting modules in \(targetURL.path) (max depth: \(resolvedDepth))...\n", stderr) }
             let detectStart = Date()
-            let detectionProgress: ((String) -> Void)? = verbose ? { msg in
-                fputs("   \(msg)\n", stderr)
-            } : nil
-            let progressHandler: ((String, Int) -> Void)? = verbose ? { name, fileCount in
-                fputs("   🔬 \(name)  (\(fileCount) file\(fileCount == 1 ? "" : "s"))\n", stderr)
-            } : nil
-            modules = analyzer.analyzeModules(
+            let detectionProgress: (@Sendable (String) -> Void)? = verbose
+                ? ({ msg in fputs("   \(msg)\n", stderr) } as @Sendable (String) -> Void)
+                : nil
+            let progressHandler: (@Sendable (String, Int) -> Void)? = verbose
+                ? ({ name, fileCount in fputs("   🔬 \(name)  (\(fileCount) file\(fileCount == 1 ? "" : "s"))\n", stderr) } as @Sendable (String, Int) -> Void)
+                : nil
+            modules = await analyzer.analyzeModules(
                 in: targetURL,
                 fileScanner: fileScanner,
                 maxDepth: resolvedDepth,
@@ -148,28 +151,30 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         let migratedCount = modules.filter { $0.status == .migrated }.count
         let pendingCount  = modules.filter { $0.status == .pendingMigration }.count
 
-        fputs("📦 \(modules.count) module(s) · \(totalFiles) file(s)\n\n", stderr)
+        if !quiet {
+            fputs("📦 \(modules.count) module(s) · \(totalFiles) file(s)\n\n", stderr)
 
-        for module in modules {
-            let indent = String(repeating: "  ", count: module.depth + 1)
-            let scoreStr = String(format: "%.2f", module.score)
-            let ind = module.migrationIndicators
-            let indicators = "actors:\(ind.actorDeclarationCount) @MainActor:\(ind.mainActorAnnotationCount) async:\(ind.asyncFunctionCount)"
-            let nameDisplay = module.qualifiedName.padding(toLength: max(30, module.qualifiedName.count + 2), withPad: " ", startingAt: 0)
-            fputs("\(indent)\(module.status.icon) \(nameDisplay) score:\(scoreStr)  findings:\(module.findings.count)  [\(indicators)]\n", stderr)
+            for module in modules {
+                let indent = String(repeating: "  ", count: module.depth + 1)
+                let scoreStr = String(format: "%.2f", module.score)
+                let ind = module.migrationIndicators
+                let indicators = "actors:\(ind.actorDeclarationCount) @MainActor:\(ind.mainActorAnnotationCount) async:\(ind.asyncFunctionCount)"
+                let nameDisplay = module.qualifiedName.padding(toLength: max(30, module.qualifiedName.count + 2), withPad: " ", startingAt: 0)
+                fputs("\(indent)\(module.status.icon) \(nameDisplay) score:\(scoreStr)  findings:\(module.findings.count)  [\(indicators)]\n", stderr)
+            }
+
+            fputs("\n", stderr)
+            fputs("📊 Total findings: \(totalFindings)  |  Project score: \(String(format: "%.2f", projectScore))\n", stderr)
+            fputs("   ✅ Migrated: \(migratedCount)  ⏳ Pending: \(pendingCount)\n", stderr)
+            fputs("\n", stderr)
         }
-
-        fputs("\n", stderr)
-        fputs("📊 Total findings: \(totalFindings)  |  Project score: \(String(format: "%.2f", projectScore))\n", stderr)
-        fputs("   ✅ Migrated: \(migratedCount)  ⏳ Pending: \(pendingCount)\n", stderr)
-        fputs("\n", stderr)
 
         // Save baseline if requested
         if let saveBaselinePath = saveBaseline ?? resolvedConfig.saveBaseline {
             let baselineURL = URL(fileURLWithPath: (saveBaselinePath as NSString).standardizingPath)
             let encoded = try JSONEncoder().encode(modules)
             try encoded.write(to: baselineURL)
-            fputs("💾 Baseline saved to \(baselineURL.path)\n", stderr)
+            if !quiet { fputs("💾 Baseline saved to \(baselineURL.path)\n", stderr) }
         }
 
         // Generate report(s)
@@ -199,7 +204,7 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
                 let outputPath = resolvedReports.count == 1 ? outputStem : "\(outputStem).\(ext)"
                 let outputURL = URL(fileURLWithPath: (outputPath as NSString).standardizingPath)
                 try reportContent.write(to: outputURL, atomically: true, encoding: .utf8)
-                fputs("✅ \(format) report written to \(outputURL.path)\n", stderr)
+                if !quiet { fputs("✅ \(format) report written to \(outputURL.path)\n", stderr) }
             } else {
                 print(reportContent)
             }
@@ -210,7 +215,7 @@ struct Swift6MigrationAnalyzerCommand: ParsableCommand {
         if verbose {
             fputs("⏱  report generation: \(reportTime)\n", stderr)
         }
-        fputs("⏱  total: \(elapsed(since: totalStart))\n", stderr)
+        if !quiet { fputs("⏱  total: \(elapsed(since: totalStart))\n", stderr) }
 
         if failOnErrors {
             let allFindings = modules.flatMap { $0.findings }

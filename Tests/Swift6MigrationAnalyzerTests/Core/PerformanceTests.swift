@@ -44,12 +44,12 @@ struct PerformanceTests {
     // MARK: - Full analysis timing
 
     @Test("analyzeModules completes SampleSwiftProject in under 15s")
-    func fullAnalysisPerformance() throws {
+    func fullAnalysisPerformance() async throws {
         let url = Self.sampleProjectURL
         guard FileManager.default.fileExists(atPath: url.path) else { return }
 
         let start   = Date()
-        let modules = analyzer.analyzeModules(in: url, fileScanner: fileScanner, maxDepth: 4)
+        let modules = await analyzer.analyzeModules(in: url, fileScanner: fileScanner, maxDepth: 4)
         let elapsed = Date().timeIntervalSince(start)
 
         #expect(modules.count == 15, "Expected 15 modules, got \(modules.count)")

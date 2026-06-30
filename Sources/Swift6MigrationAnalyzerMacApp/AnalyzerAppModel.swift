@@ -259,7 +259,7 @@ final class AnalyzerAppModel {
 
             let modules: [ModuleResult]
             if isDirectory {
-                modules = analyzer.analyzeModules(
+                modules = await analyzer.analyzeModules(
                     in: options.targetURL,
                     fileScanner: FileScanner(),
                     maxDepth: options.maxDepth
