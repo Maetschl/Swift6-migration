@@ -33,7 +33,7 @@ A command-line tool to analyze Swift 5 codebases and detect patterns that need a
 ### Homebrew (recommended)
 
 ```bash
-brew tap Maetschl/swift6-migration
+brew tap Maetschl/swift6-migration https://github.com/Maetschl/Swift6-migration
 brew install swift6-analyzer
 ```
 
